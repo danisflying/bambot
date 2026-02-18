@@ -161,6 +161,7 @@ export function ChatControl({
       bounds="window"
       className="z-50"
       style={{ display: show ? undefined : "none" }}
+      cancel="input,select,textarea,button,a,option"
     >
       <div ref={ref} className={"p-4 w-80 z-50 " + panelStyle}>
         <h4 className="border-b border-white/50  pb-2 font-bold mb-2 flex items-center justify-between">

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, Suspense } from "react";
+import { useEffect, useRef, useState, Suspense } from "react";
 import { robotConfigMap } from "@/config/robotConfig";
 import * as THREE from "three";
 import { Html, useProgress } from "@react-three/drei";
@@ -16,10 +16,13 @@ import ChatControlButton from "../playground/controlButtons/ChatControlButton";
 import LeaderControlButton from "../playground/controlButtons/LeaderControlButton";
 import RecordButton from "./controlButtons/RecordButton";
 import RecordControl from "./recordControl/RecordControl";
+import EpisodeButton from "./controlButtons/EpisodeButton";
+import EpisodeControl from "./episodeControl/EpisodeControl";
 import {
   getPanelStateFromLocalStorage,
   setPanelStateToLocalStorage,
 } from "@/lib/panelSettings";
+import { useBambotAPI } from "@/hooks/useBambotAPI";
 
 export type JointDetails = {
   name: string;
@@ -59,6 +62,13 @@ export default function RobotLoader({ robotName }: RobotLoaderProps) {
   const [showRecordControl, setShowRecordControl] = useState(() => {
     return getPanelStateFromLocalStorage("recordControl", robotName) ?? false;
   });
+  const [showEpisodeControl, setShowEpisodeControl] = useState(() => {
+    return getPanelStateFromLocalStorage("episodeControl", robotName) ?? false;
+  });
+  // Ref to the Three.js renderer canvas for robot_view simulated camera
+  const robotCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  // Ref to the off-screen 2D canvas for wrist_view simulated camera
+  const wristCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const config = robotConfigMap[robotName];
 
   // Get leader robot servo IDs (exclude continuous joint types)
@@ -100,6 +110,13 @@ export default function RobotLoader({ robotName }: RobotLoaderProps) {
     clearRecordData,
   } = useRobotControl(jointDetails, urdfInitJointAngles);
 
+  // Enable BamBot API bridge — polls server for AI agent commands
+  useBambotAPI({
+    enabled: robotName === "so-arm100",
+    isConnected,
+    jointStates,
+  });
+
   useEffect(() => {
     updateJointDetails(jointDetails);
   }, [jointDetails, updateJointDetails]);
@@ -137,6 +154,14 @@ export default function RobotLoader({ robotName }: RobotLoaderProps) {
     });
   };
 
+  const toggleEpisodeControl = () => {
+    setShowEpisodeControl((prev) => {
+      const newState = !prev;
+      setPanelStateToLocalStorage("episodeControl", newState, robotName);
+      return newState;
+    });
+  };
+
   const hideControlPanel = () => {
     setShowControlPanel(false);
     setPanelStateToLocalStorage("keyboardControl", false, robotName);
@@ -157,6 +182,11 @@ export default function RobotLoader({ robotName }: RobotLoaderProps) {
     setPanelStateToLocalStorage("recordControl", false, robotName);
   };
 
+  const hideEpisodeControl = () => {
+    setShowEpisodeControl(false);
+    setPanelStateToLocalStorage("episodeControl", false, robotName);
+  };
+
   return (
     <>
       <Canvas
@@ -165,8 +195,9 @@ export default function RobotLoader({ robotName }: RobotLoaderProps) {
           position: camera.position,
           fov: camera.fov,
         }}
-        onCreated={({ scene }) => {
+        onCreated={({ scene, gl }) => {
           scene.background = new THREE.Color(0x263238);
+          robotCanvasRef.current = gl.domElement;
         }}
       >
         <Suspense fallback={<Loader />}>
@@ -176,6 +207,7 @@ export default function RobotLoader({ robotName }: RobotLoaderProps) {
             orbitTarget={orbitTarget}
             setJointDetails={setJointDetails}
             jointStates={jointStates}
+            wristCanvasRef={wristCanvasRef}
           />
         </Suspense>
       </Canvas>
@@ -244,6 +276,22 @@ export default function RobotLoader({ robotName }: RobotLoaderProps) {
         }}
       />
 
+      {/* Episode Recorder overlay */}
+      <EpisodeControl
+        show={showEpisodeControl}
+        onHide={hideEpisodeControl}
+        leaderControl={{
+          isConnected: leaderControl.isConnected,
+          getPositions: leaderControl.getPositions,
+          disconnectLeader: leaderControl.disconnectLeader,
+        }}
+        jointStates={jointStates}
+        jointDetails={jointDetails}
+        robotName={robotName}
+        robotViewCanvas={robotCanvasRef.current}
+        wristViewCanvas={wristCanvasRef.current}
+      />
+
       <div className="absolute bottom-5 left-0 right-0">
         <div className="flex justify-center items-center">
           <div className="flex gap-2 max-w-md">
@@ -262,6 +310,10 @@ export default function RobotLoader({ robotName }: RobotLoaderProps) {
             <RecordButton
               showControlPanel={showRecordControl}
               onToggleControlPanel={toggleRecordControl}
+            />
+            <EpisodeButton
+              showControlPanel={showEpisodeControl}
+              onToggleControlPanel={toggleEpisodeControl}
             />
           </div>
         </div>

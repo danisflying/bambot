@@ -103,6 +103,7 @@ export function ControlPanel({
       bounds="window"
       className="z-50"
       style={{ display: show ? undefined : "none" }}
+      cancel="input,select,textarea,button,a,option"
     >
       <div
         ref={ref}
