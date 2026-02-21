@@ -1,12 +1,3 @@
-// Define simulated camera type (mirrors useCameras.ts)
-export type SimulatedCameraType = "noise" | "robot_view" | "wrist_view" | "depth_map";
-
-// Define a type for default simulated camera declarations per robot
-export type DefaultSimulatedCamera = {
-  name: string;
-  type: SimulatedCameraType;
-};
-
 // Define camera settings type
 type CameraSettings = {
   position: [number, number, number];
@@ -49,10 +40,6 @@ export type RobotConfig = {
   compoundMovements?: CompoundMovement[];
   controlPrompt?: string;
   systemPrompt?: string; // <-- Add this line
-  /** Simulated cameras to auto-initialise when the playground opens */
-  defaultSimulatedCameras?: DefaultSimulatedCamera[];
-  /** URDF joint name to attach a wrist camera to */
-  wristCameraJoint?: string;
 };
 
 // Define configuration map per slug
@@ -133,11 +120,6 @@ export const robotConfigMap: { [key: string]: RobotConfig } = {
     - "6" to open the jaw and "y" to close the jaw
     - "t" and "5" for rotating jaw
     `,
-    wristCameraJoint: "Wrist_Roll",
-    defaultSimulatedCameras: [
-      { name: "cam_high", type: "robot_view" },
-      { name: "cam_wrist", type: "wrist_view" },
-    ],
   },
   sts3215: {
     urdfUrl: "/URDFs/sts3215.urdf",

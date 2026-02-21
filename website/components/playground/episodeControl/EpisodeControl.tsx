@@ -8,7 +8,6 @@ import { useCameras } from "@/hooks/useCameras";
 import { useEpisodeRecorder } from "@/hooks/useEpisodeRecorder";
 import type { Episode, EpisodeRecorderConfig } from "@/lib/episode";
 import type { JointState } from "@/hooks/useRobotControl";
-import { robotConfigMap } from "@/config/robotConfig";
 
 // ── Props ──────────────────────────────────────────────────────────────────
 
@@ -33,8 +32,6 @@ interface EpisodeControlProps {
   robotName: string;
   /** Three.js renderer canvas for robot_view simulated camera */
   robotViewCanvas?: HTMLCanvasElement | null;
-  /** Off-screen 2D canvas for wrist_view simulated camera */
-  wristViewCanvas?: HTMLCanvasElement | null;
 }
 
 // ── Constants ──────────────────────────────────────────────────────────────
@@ -114,7 +111,6 @@ const EpisodeControl = ({
   jointDetails,
   robotName,
   robotViewCanvas = null,
-  wristViewCanvas = null,
 }: EpisodeControlProps) => {
   // UI state
   const [position, setPosition] = useState({ x: 0, y: 0 });
@@ -146,36 +142,15 @@ const EpisodeControl = ({
   // Multi-camera manager
   const cameras = useCameras();
 
-  // Initialize cameras from config defaults (or fallback to cam_high)
+  // Initialize with one default camera
   const initializedRef = useRef(false);
   useEffect(() => {
     if (!initializedRef.current) {
-      const cfg = robotConfigMap[robotName];
-      const defaults = cfg?.defaultSimulatedCameras;
-      if (defaults && defaults.length > 0) {
-        defaults.forEach(({ name, type }) => {
-          cameras.addCamera(name, {
-            width: DEFAULT_CAM_WIDTH,
-            height: DEFAULT_CAM_HEIGHT,
-            quality: DEFAULT_CAM_QUALITY,
-          });
-          // Start simulated cameras after a tick so the instance is registered
-          setTimeout(() => {
-            const sourceCanvas =
-              type === "robot_view" ? robotViewCanvas ?? undefined :
-              type === "wrist_view" ? wristViewCanvas ?? undefined :
-              type === "depth_map" ? robotViewCanvas ?? undefined : // depth_map reuses main canvas for now
-              undefined;
-            cameras.startSimulatedCamera(name, type, sourceCanvas);
-          }, 0);
-        });
-      } else {
-        cameras.addCamera("cam_high", {
-          width: DEFAULT_CAM_WIDTH,
-          height: DEFAULT_CAM_HEIGHT,
-          quality: DEFAULT_CAM_QUALITY,
-        });
-      }
+      cameras.addCamera("cam_high", {
+        width: DEFAULT_CAM_WIDTH,
+        height: DEFAULT_CAM_HEIGHT,
+        quality: DEFAULT_CAM_QUALITY,
+      });
       initializedRef.current = true;
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -262,7 +237,7 @@ const EpisodeControl = ({
 
   const handleAddSimCamera = (
     name: string,
-    type: "noise" | "robot_view" | "wrist_view" | "depth_map"
+    type: "noise" | "robot_view"
   ) => {
     cameras.addCamera(name, {
       width: DEFAULT_CAM_WIDTH,
@@ -271,12 +246,11 @@ const EpisodeControl = ({
     });
     // Start immediately after adding (use setTimeout to let React sync the instance)
     setTimeout(() => {
-      const sourceCanvas =
-        type === "robot_view" ? robotViewCanvas ?? undefined :
-        type === "wrist_view" ? wristViewCanvas ?? undefined :
-        type === "depth_map" ? robotViewCanvas ?? undefined :
-        undefined;
-      cameras.startSimulatedCamera(name, type, sourceCanvas);
+      cameras.startSimulatedCamera(
+        name,
+        type,
+        type === "robot_view" ? robotViewCanvas ?? undefined : undefined
+      );
     }, 0);
   };
 
@@ -421,61 +395,6 @@ const EpisodeControl = ({
             </span>
           </div>
 
-          {/* Quick-start buttons when no cameras added yet */}
-          {cameras.cameraCount === 0 && !isRecording && (
-            <div className="flex gap-2 mb-2">
-              <button
-                className="flex-1 bg-emerald-700 hover:bg-emerald-600 border border-emerald-600 rounded px-2 py-2 text-xs text-emerald-200 font-semibold flex items-center justify-center gap-1.5"
-                onClick={() => {
-                  const cfg = robotConfigMap[robotName];
-                  const defaults = cfg?.defaultSimulatedCameras;
-                  if (defaults && defaults.length > 0) {
-                    defaults.forEach(({ name, type }) => {
-                      cameras.addCamera(name, {
-                        width: DEFAULT_CAM_WIDTH,
-                        height: DEFAULT_CAM_HEIGHT,
-                        quality: DEFAULT_CAM_QUALITY,
-                      });
-                      setTimeout(() => {
-                        const sourceCanvas =
-                          type === "robot_view" ? robotViewCanvas ?? undefined :
-                          type === "wrist_view" ? wristViewCanvas ?? undefined :
-                          type === "depth_map" ? robotViewCanvas ?? undefined :
-                          undefined;
-                        cameras.startSimulatedCamera(name, type, sourceCanvas);
-                      }, 0);
-                    });
-                  } else {
-                    cameras.addCamera("sim_robot", {
-                      width: DEFAULT_CAM_WIDTH,
-                      height: DEFAULT_CAM_HEIGHT,
-                      quality: DEFAULT_CAM_QUALITY,
-                    });
-                    setTimeout(() => {
-                      cameras.startSimulatedCamera("sim_robot", "robot_view", robotViewCanvas ?? undefined);
-                    }, 0);
-                  }
-                }}
-              >
-                <span className="opacity-70">✦</span> Sim Cam
-              </button>
-              <button
-                className="flex-1 bg-blue-600 hover:bg-blue-500 border border-blue-500 rounded px-2 py-2 text-xs text-blue-100 font-semibold flex items-center justify-center gap-1.5"
-                onClick={async () => {
-                  cameras.addCamera("cam_high", {
-                    width: DEFAULT_CAM_WIDTH,
-                    height: DEFAULT_CAM_HEIGHT,
-                    quality: DEFAULT_CAM_QUALITY,
-                  });
-                  await cameras.refreshDevices();
-                  setTimeout(() => cameras.startCamera("cam_high"), 0);
-                }}
-              >
-                <span className="opacity-70">⏺</span> Start Cam
-              </button>
-            </div>
-          )}
-
           {/* Camera list */}
           <div className="space-y-2 mb-2">
             {cameras.cameraStates.map((cam) => (
@@ -533,10 +452,7 @@ const EpisodeControl = ({
                         cameras.startSimulatedCamera(
                           cam.name,
                           cam.simulationType ?? "noise",
-                          cam.simulationType === "robot_view" ? robotViewCanvas ?? undefined :
-                          cam.simulationType === "wrist_view" ? wristViewCanvas ?? undefined :
-                          cam.simulationType === "depth_map" ? robotViewCanvas ?? undefined :
-                          undefined
+                          cam.simulationType === "robot_view" ? robotViewCanvas ?? undefined : undefined
                         )
                       }
                     >
@@ -629,8 +545,6 @@ const EpisodeControl = ({
                   {([
                     { label: "Noise test", type: "noise" as const, baseName: "sim_noise" },
                     { label: "Robot view (3D)", type: "robot_view" as const, baseName: "sim_robot" },
-                    { label: "Wrist view", type: "wrist_view" as const, baseName: "sim_wrist" },
-                    { label: "Depth map", type: "depth_map" as const, baseName: "sim_depth" },
                   ]).map(({ label, type, baseName }) => {
                     // Find unused name
                     const existingNames = cameras.cameraStates.map((c) => c.name);

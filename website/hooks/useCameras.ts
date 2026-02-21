@@ -9,7 +9,7 @@ export type CameraConfig = {
   quality: number; // JPEG quality 0-1
 };
 
-export type SimulatedCameraType = "noise" | "robot_view" | "wrist_view" | "depth_map";
+export type SimulatedCameraType = "noise" | "robot_view";
 
 export type CameraInstance = {
   name: string;
@@ -23,7 +23,7 @@ export type CameraInstance = {
   // Simulated camera fields
   isSimulated: boolean;
   simulationType?: SimulatedCameraType;
-  sourceCanvas?: HTMLCanvasElement | null; // for robot_view / wrist_view / depth_map type
+  sourceCanvas?: HTMLCanvasElement | null; // for robot_view type
   animFrameId?: number; // for noise animation loop
 };
 
@@ -267,15 +267,15 @@ export function useCameras() {
         inst.deviceId = "sim:noise";
         inst.error = null;
         syncState();
-      } else if (type === "robot_view" || type === "wrist_view" || type === "depth_map") {
+      } else if (type === "robot_view") {
         if (!sourceCanvas) {
-          inst.error = `No canvas available for ${type}`;
+          inst.error = "No robot view canvas available";
           syncState();
           return;
         }
         inst.sourceCanvas = sourceCanvas;
 
-        // Capture the provided canvas directly as a stream
+        // Capture the Three.js canvas directly as a stream
         const stream = (sourceCanvas as HTMLCanvasElement & {
           captureStream(fps?: number): MediaStream;
         }).captureStream(fps);
@@ -284,7 +284,7 @@ export function useCameras() {
         inst.videoEl.play().catch(() => {});
 
         inst.isActive = true;
-        inst.deviceId = `sim:${type}`;
+        inst.deviceId = "sim:robot_view";
         inst.error = null;
         syncState();
       }
@@ -337,14 +337,8 @@ export function useCameras() {
     if (inst.isSimulated && inst.simulationType === "noise") {
       // Canvas is already up-to-date from the animation loop
       return inst.canvasEl.toDataURL("image/jpeg", inst.config.quality);
-    } else if (
-      inst.isSimulated &&
-      (inst.simulationType === "robot_view" ||
-        inst.simulationType === "wrist_view" ||
-        inst.simulationType === "depth_map") &&
-      inst.sourceCanvas
-    ) {
-      // Copy the source canvas (Three.js main view, wrist render target, or depth) to our canvas
+    } else if (inst.isSimulated && inst.simulationType === "robot_view" && inst.sourceCanvas) {
+      // Copy the Three.js canvas to our canvas, then read
       ctx.drawImage(inst.sourceCanvas, 0, 0, inst.canvasEl.width, inst.canvasEl.height);
       return inst.canvasEl.toDataURL("image/jpeg", inst.config.quality);
     } else {

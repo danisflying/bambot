@@ -67,8 +67,6 @@ export default function RobotLoader({ robotName }: RobotLoaderProps) {
   });
   // Ref to the Three.js renderer canvas for robot_view simulated camera
   const robotCanvasRef = useRef<HTMLCanvasElement | null>(null);
-  // Ref to the off-screen 2D canvas for wrist_view simulated camera
-  const wristCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const config = robotConfigMap[robotName];
 
   // Get leader robot servo IDs (exclude continuous joint types)
@@ -207,7 +205,6 @@ export default function RobotLoader({ robotName }: RobotLoaderProps) {
             orbitTarget={orbitTarget}
             setJointDetails={setJointDetails}
             jointStates={jointStates}
-            wristCanvasRef={wristCanvasRef}
           />
         </Suspense>
       </Canvas>
@@ -289,7 +286,6 @@ export default function RobotLoader({ robotName }: RobotLoaderProps) {
         jointDetails={jointDetails}
         robotName={robotName}
         robotViewCanvas={robotCanvasRef.current}
-        wristViewCanvas={wristCanvasRef.current}
       />
 
       <div className="absolute bottom-5 left-0 right-0">
