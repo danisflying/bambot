@@ -5,13 +5,16 @@ import {
   Episode,
   EpisodeFrame,
   EpisodeRecorderConfig,
+  EpisodeSummary,
+  RecorderPhase,
   DEFAULT_EPISODE_CONFIG,
+  toEpisodeSummary,
 } from "@/lib/episode";
 import { servoPositionToAngle } from "@/lib/utils";
 
 type GrabFrameBase64Fn = () => string | null;
 
-type EpisodeRecorderDeps = {
+export type EpisodeRecorderDeps = {
   /** Function to read leader arm positions — returns Map<servoId, rawServoPosition> */
   getLeaderPositions: () => Promise<Map<number, number>>;
   /** Current follower joint states — we read the last-commanded angles */
@@ -25,8 +28,8 @@ type EpisodeRecorderDeps = {
 };
 
 export type EpisodeRecorderState = {
-  isRecording: boolean;
-  isPaused: boolean;
+  /** Explicit phase — replaces the old isRecording/isPaused/hasLastEpisode booleans */
+  phase: RecorderPhase;
   frameCount: number;
   elapsedMs: number;
   currentEpisodeId: number;
@@ -35,199 +38,243 @@ export type EpisodeRecorderState = {
 /**
  * Hook for recording ACT-compatible episodes.
  * Syncs: leader arm read (observation qpos) + follower write (action) + camera frames.
+ *
+ * Improvements over the v1 hook:
+ * - Explicit state-machine phase (idle → recording ⇄ paused → reviewing → idle)
+ * - Async-busy guard prevents overlapping frame captures
+ * - Episode ID kept in a ref to avoid stale closures
+ * - completedEpisodes stores only lightweight EpisodeSummary (no frame data)
+ * - lastEpisode held in React state so consumers don't need forceRender hacks
  */
 export function useEpisodeRecorder(
   deps: EpisodeRecorderDeps,
   config: EpisodeRecorderConfig = DEFAULT_EPISODE_CONFIG
 ) {
   const [state, setState] = useState<EpisodeRecorderState>({
-    isRecording: false,
-    isPaused: false,
+    phase: "idle",
     frameCount: 0,
     elapsedMs: 0,
     currentEpisodeId: 0,
   });
 
-  // Internal refs to avoid stale closures in the interval
+  // The last completed episode — held in state so the UI re-renders automatically.
+  const [lastEpisode, setLastEpisode] = useState<Episode | null>(null);
+
+  // Lightweight summaries for the session list (no frame data retained).
+  const [completedEpisodes, setCompletedEpisodes] = useState<EpisodeSummary[]>(
+    []
+  );
+
+  // ── Internal refs (avoid stale closures in the capture interval) ────────
+
   const framesRef = useRef<EpisodeFrame[]>([]);
   const startTimeRef = useRef<number>(0);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const busyRef = useRef(false); // async-overlap guard
+  const episodeIdRef = useRef(0); // avoids stale closure on state.currentEpisodeId
   const configRef = useRef(config);
   const depsRef = useRef(deps);
 
-  // Keep refs up to date
+  // Keep refs in sync every render
   configRef.current = config;
   depsRef.current = deps;
 
-  // Completed episodes this session (for batch save)
-  const [completedEpisodes, setCompletedEpisodes] = useState<Episode[]>([]);
+  // ── Frame capture (async-safe) ──────────────────────────────────────────
 
   const captureFrame = useCallback(async () => {
-    const { getLeaderPositions, getFollowerAngles, servoIds, cameraGrabbers } =
-      depsRef.current;
-    const now = performance.now();
-    const timestamp_ms = Math.round(now - startTimeRef.current);
+    // Skip if previous capture is still in-flight
+    if (busyRef.current) return;
+    busyRef.current = true;
 
-    // 1. Read leader arm positions (observation qpos)
-    let qpos: number[];
     try {
-      const posMap = await getLeaderPositions();
-      qpos = servoIds.map((id) => {
-        const raw = posMap.get(id);
-        return raw !== undefined ? servoPositionToAngle(raw) : 0;
-      });
-    } catch {
-      // If leader read fails, use zeros
-      qpos = servoIds.map(() => 0);
-    }
+      const {
+        getLeaderPositions,
+        getFollowerAngles,
+        servoIds,
+        cameraGrabbers,
+      } = depsRef.current;
+      const now = performance.now();
+      const timestamp_ms = Math.round(now - startTimeRef.current);
 
-    // 2. Read follower joint angles (action — what was commanded)
-    const action = getFollowerAngles();
-
-    // 3. Grab camera frames
-    const images: Record<string, string> = {};
-    for (const [camName, grabFn] of Object.entries(cameraGrabbers)) {
-      const frame = grabFn();
-      if (frame) {
-        images[camName] = frame;
-      }
-    }
-
-    const frame: EpisodeFrame = {
-      timestamp_ms,
-      observation: { qpos, images },
-      action,
-    };
-
-    framesRef.current.push(frame);
-    setState((prev) => ({
-      ...prev,
-      frameCount: framesRef.current.length,
-      elapsedMs: timestamp_ms,
-    }));
-  }, []);
-
-  // Start recording a new episode
-  const startRecording = useCallback(() => {
-    framesRef.current = [];
-    startTimeRef.current = performance.now();
-
-    const intervalMs = Math.round(1000 / configRef.current.fps);
-
-    intervalRef.current = setInterval(() => {
-      captureFrame();
-    }, intervalMs);
-
-    setState((prev) => ({
-      ...prev,
-      isRecording: true,
-      isPaused: false,
-      frameCount: 0,
-      elapsedMs: 0,
-    }));
-  }, [captureFrame]);
-
-  // Pause recording (keeps frames, stops capturing)
-  const pauseRecording = useCallback(() => {
-    if (intervalRef.current) {
-      clearInterval(intervalRef.current);
-      intervalRef.current = null;
-    }
-    setState((prev) => ({ ...prev, isPaused: true }));
-  }, []);
-
-  // Resume recording after pause
-  const resumeRecording = useCallback(() => {
-    const intervalMs = Math.round(1000 / configRef.current.fps);
-    intervalRef.current = setInterval(() => {
-      captureFrame();
-    }, intervalMs);
-    setState((prev) => ({ ...prev, isPaused: false }));
-  }, [captureFrame]);
-
-  // Stop recording and bundle into an Episode
-  const stopRecording = useCallback(
-    (success: boolean = true, notes?: string): Episode | null => {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-        intervalRef.current = null;
+      // 1. Read leader arm positions (observation qpos)
+      let qpos: number[];
+      try {
+        const posMap = await getLeaderPositions();
+        qpos = servoIds.map((id) => {
+          const raw = posMap.get(id);
+          return raw !== undefined ? servoPositionToAngle(raw) : 0;
+        });
+      } catch {
+        qpos = servoIds.map(() => 0);
       }
 
-      const frames = [...framesRef.current];
-      if (frames.length === 0) {
-        setState((prev) => ({
-          ...prev,
-          isRecording: false,
-          isPaused: false,
-        }));
-        return null;
+      // 2. Read follower joint angles (action — what was commanded)
+      const action = getFollowerAngles();
+
+      // 3. Grab camera frames
+      const images: Record<string, string> = {};
+      for (const [camName, grabFn] of Object.entries(cameraGrabbers)) {
+        const frame = grabFn();
+        if (frame) images[camName] = frame;
       }
 
-      const cfg = configRef.current;
-      const episodeId = state.currentEpisodeId;
-
-      const episode: Episode = {
-        task: cfg.task,
-        episode_id: episodeId,
-        robot: cfg.robot,
-        fps: cfg.fps,
-        success,
-        notes,
-        joint_names: depsRef.current.jointNames,
-        frames,
-        camera_names: cfg.cameraNames,
-        created_at: new Date().toISOString(),
+      const frame: EpisodeFrame = {
+        timestamp_ms,
+        observation: { qpos, images },
+        action,
       };
 
-      setCompletedEpisodes((prev) => [...prev, episode]);
-      framesRef.current = [];
-
+      framesRef.current.push(frame);
       setState((prev) => ({
         ...prev,
-        isRecording: false,
-        isPaused: false,
-        frameCount: 0,
-        elapsedMs: 0,
-        currentEpisodeId: prev.currentEpisodeId + 1,
+        frameCount: framesRef.current.length,
+        elapsedMs: timestamp_ms,
       }));
+    } finally {
+      busyRef.current = false;
+    }
+  }, []);
 
-      return episode;
-    },
-    [state.currentEpisodeId]
-  );
+  // ── Interval helpers ────────────────────────────────────────────────────
 
-  // Discard current recording without saving
-  const discardRecording = useCallback(() => {
+  const clearCaptureInterval = useCallback(() => {
     if (intervalRef.current) {
       clearInterval(intervalRef.current);
       intervalRef.current = null;
     }
+  }, []);
+
+  const startCaptureInterval = useCallback(() => {
+    clearCaptureInterval();
+    const intervalMs = Math.round(1000 / configRef.current.fps);
+    intervalRef.current = setInterval(() => {
+      captureFrame();
+    }, intervalMs);
+  }, [captureFrame, clearCaptureInterval]);
+
+  // ── Public API ──────────────────────────────────────────────────────────
+
+  /** Start recording a new episode (idle → recording). */
+  const startRecording = useCallback(() => {
     framesRef.current = [];
+    busyRef.current = false;
+    startTimeRef.current = performance.now();
+    startCaptureInterval();
+    setLastEpisode(null);
     setState((prev) => ({
       ...prev,
-      isRecording: false,
-      isPaused: false,
+      phase: "recording",
       frameCount: 0,
       elapsedMs: 0,
     }));
-  }, []);
+  }, [startCaptureInterval]);
 
-  // Save episode to server
-  const saveEpisode = useCallback(async (episode: Episode): Promise<boolean> => {
-    try {
-      const res = await fetch("/api/episodes", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(episode),
-      });
-      return res.ok;
-    } catch (err) {
-      console.error("Failed to save episode:", err);
-      return false;
+  /** Pause recording (recording → paused). */
+  const pauseRecording = useCallback(() => {
+    clearCaptureInterval();
+    setState((prev) => ({ ...prev, phase: "paused" }));
+  }, [clearCaptureInterval]);
+
+  /** Resume recording after pause (paused → recording). */
+  const resumeRecording = useCallback(() => {
+    startCaptureInterval();
+    setState((prev) => ({ ...prev, phase: "recording" }));
+  }, [startCaptureInterval]);
+
+  /**
+   * Stop recording and enter the review phase (recording|paused → reviewing).
+   * The episode is stored in `lastEpisode` state — no ref + forceRender needed.
+   */
+  const stopRecording = useCallback(() => {
+    clearCaptureInterval();
+
+    const frames = [...framesRef.current];
+    framesRef.current = [];
+
+    if (frames.length === 0) {
+      setState((prev) => ({ ...prev, phase: "idle" }));
+      return;
     }
+
+    const cfg = configRef.current;
+    const id = episodeIdRef.current;
+
+    const episode: Episode = {
+      task: cfg.task,
+      episode_id: id,
+      robot: cfg.robot,
+      fps: cfg.fps,
+      success: true, // default — user can toggle in review phase
+      joint_names: depsRef.current.jointNames,
+      frames,
+      camera_names: cfg.cameraNames,
+      created_at: new Date().toISOString(),
+    };
+
+    episodeIdRef.current = id + 1;
+    setLastEpisode(episode);
+    setState((prev) => ({
+      ...prev,
+      phase: "reviewing",
+      frameCount: 0,
+      elapsedMs: 0,
+      currentEpisodeId: id + 1,
+    }));
+  }, [clearCaptureInterval]);
+
+  /** Discard current recording without saving (recording|paused → idle). */
+  const discardRecording = useCallback(() => {
+    clearCaptureInterval();
+    framesRef.current = [];
+    busyRef.current = false;
+    setState((prev) => ({
+      ...prev,
+      phase: "idle",
+      frameCount: 0,
+      elapsedMs: 0,
+    }));
+  }, [clearCaptureInterval]);
+
+  /** Accept the episode: add summary to session list, then clear (reviewing → idle). */
+  const acceptEpisode = useCallback(
+    (success: boolean, notes?: string) => {
+      if (!lastEpisode) return;
+      const tagged: Episode = { ...lastEpisode, success, notes };
+      // Store only a lightweight summary — no frame data retained in state.
+      setCompletedEpisodes((prev) => [...prev, toEpisodeSummary(tagged)]);
+      setLastEpisode(null);
+      setState((prev) => ({ ...prev, phase: "idle" }));
+    },
+    [lastEpisode]
+  );
+
+  /** Discard the episode in review without saving (reviewing → idle). */
+  const discardReviewedEpisode = useCallback(() => {
+    setLastEpisode(null);
+    setState((prev) => ({ ...prev, phase: "idle" }));
   }, []);
 
-  // Download episode as JSON locally
+  // ── Save / Download ─────────────────────────────────────────────────────
+
+  /** Save an episode to the server. */
+  const saveEpisode = useCallback(
+    async (episode: Episode): Promise<boolean> => {
+      try {
+        const res = await fetch("/api/episodes", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(episode),
+        });
+        return res.ok;
+      } catch (err) {
+        console.error("Failed to save episode:", err);
+        return false;
+      }
+    },
+    []
+  );
+
+  /** Download an episode as a JSON file. */
   const downloadEpisode = useCallback((episode: Episode) => {
     const dataStr = JSON.stringify(episode);
     const blob = new Blob([dataStr], { type: "application/json" });
@@ -239,19 +286,22 @@ export function useEpisodeRecorder(
     URL.revokeObjectURL(url);
   }, []);
 
-  // Clear completed episodes list
+  /** Clear session summary list. */
   const clearCompletedEpisodes = useCallback(() => {
     setCompletedEpisodes([]);
   }, []);
 
   return {
     state,
+    lastEpisode,
     completedEpisodes,
     startRecording,
     pauseRecording,
     resumeRecording,
     stopRecording,
     discardRecording,
+    acceptEpisode,
+    discardReviewedEpisode,
     saveEpisode,
     downloadEpisode,
     clearCompletedEpisodes,

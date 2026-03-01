@@ -1,6 +1,11 @@
 ﻿"use client";
 
 import { useState, useCallback, useRef, useEffect } from "react";
+import {
+  DEFAULT_CAM_WIDTH,
+  DEFAULT_CAM_HEIGHT,
+  DEFAULT_CAM_QUALITY,
+} from "@/config/cameraConfig";
 
 export type CameraConfig = {
   name: string;
@@ -36,9 +41,9 @@ export type CameraInstanceState = {
   simulationType?: SimulatedCameraType;
 };
 
-const DEFAULT_WIDTH = 640;
-const DEFAULT_HEIGHT = 480;
-const DEFAULT_QUALITY = 0.85;
+const DEFAULT_WIDTH = DEFAULT_CAM_WIDTH;
+const DEFAULT_HEIGHT = DEFAULT_CAM_HEIGHT;
+const DEFAULT_QUALITY = DEFAULT_CAM_QUALITY;
 
 // â”€â”€ Noise generator helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 

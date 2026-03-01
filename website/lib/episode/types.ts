@@ -4,6 +4,13 @@
  * with camera images, timestamps, and metadata.
  */
 
+// ── Recorder phase state machine ───────────────────────────────────────────
+
+/** Explicit recording lifecycle — makes impossible states unrepresentable. */
+export type RecorderPhase = "idle" | "recording" | "paused" | "reviewing";
+
+// ── Frame & Episode ────────────────────────────────────────────────────────
+
 /** A single frame captured during an episode */
 export type EpisodeFrame = {
   /** Milliseconds since episode start */
@@ -39,11 +46,11 @@ export type Episode = {
   frames: EpisodeFrame[];
   /** ISO timestamp of when the episode was created */
   created_at: string;
-  /** Number of cameras used */
+  /** Camera names used */
   camera_names: string[];
 };
 
-/** Summary info for listing episodes (without frame data) */
+/** Summary info for listing episodes (without frame data) — lightweight. */
 export type EpisodeSummary = {
   task: string;
   episode_id: number;
@@ -57,6 +64,26 @@ export type EpisodeSummary = {
   camera_names: string[];
   created_at: string;
 };
+
+/** Build a lightweight summary from a full episode. */
+export function toEpisodeSummary(ep: Episode): EpisodeSummary {
+  const lastFrame = ep.frames[ep.frames.length - 1];
+  return {
+    task: ep.task,
+    episode_id: ep.episode_id,
+    robot: ep.robot,
+    fps: ep.fps,
+    success: ep.success,
+    notes: ep.notes,
+    joint_names: ep.joint_names,
+    frame_count: ep.frames.length,
+    duration_s: lastFrame ? lastFrame.timestamp_ms / 1000 : 0,
+    camera_names: ep.camera_names,
+    created_at: ep.created_at,
+  };
+}
+
+// ── Configuration ──────────────────────────────────────────────────────────
 
 /** Configuration for the episode recorder */
 export type EpisodeRecorderConfig = {

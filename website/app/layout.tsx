@@ -18,8 +18,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
-      <body className={`${inter.className} bg-black text-white w-screen h-screen`}>
+    <html lang="en" suppressHydrationWarning>
+      <body className={`${inter.className} bg-black text-white w-screen h-screen`} suppressHydrationWarning>
         <ThemeProvider
             attribute="class"
             defaultTheme="dark"
