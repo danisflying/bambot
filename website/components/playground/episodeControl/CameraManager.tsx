@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import type { CameraInstanceState } from "@/hooks/useCameras";
 import CameraPreview from "./CameraPreview";
 import {
@@ -21,7 +21,7 @@ interface CameraManagerProps {
   availableDevices: MediaDeviceInfo[];
   /** Whether recording is in progress (locks add/remove) */
   locked: boolean;
-  /** Direct methods from useCameras — no thin wrappers needed */
+  /** Direct methods from useCameras */
   addCamera: (name: string, config?: { width?: number; height?: number; quality?: number }) => void;
   removeCamera: (name: string) => void;
   startCamera: (name: string, deviceId?: string) => Promise<void>;
@@ -35,6 +35,14 @@ interface CameraManagerProps {
   getVideoElement: (name: string) => HTMLVideoElement | null;
   /** Three.js canvas for robot_view sim cameras */
   robotViewCanvas?: HTMLCanvasElement | null;
+}
+
+// ── Helpers ────────────────────────────────────────────────────────────────
+
+/** Truncate a device label so the dropdown stays readable */
+function shortLabel(d: MediaDeviceInfo, idx: number): string {
+  const label = d.label || `Camera ${idx + 1}`;
+  return label.length > 36 ? label.slice(0, 33) + "…" : label;
 }
 
 // ── Component ──────────────────────────────────────────────────────────────
@@ -57,6 +65,9 @@ export default function CameraManager({
   const [addCamOpen, setAddCamOpen] = useState(false);
   const addCamRef = useRef<HTMLDivElement>(null);
 
+  // Track which deviceId each camera slot has selected (before starting)
+  const [selectedDevices, setSelectedDevices] = useState<Record<string, string>>({});
+
   // Close dropdown on outside click
   useEffect(() => {
     if (!addCamOpen) return;
@@ -68,6 +79,22 @@ export default function CameraManager({
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
   }, [addCamOpen]);
+
+  // ── Device-in-use tracking ─────────────────────────────────────────────
+  // Build a set of deviceIds that are already actively streaming on another
+  // camera slot, so we can grey them out / warn.
+
+  const usedDeviceIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const cam of cameraStates) {
+      if (cam.isActive && cam.deviceId && !cam.deviceId.startsWith("sim:")) {
+        ids.add(cam.deviceId);
+      }
+    }
+    return ids;
+  }, [cameraStates]);
+
+  // ── Preset helpers ─────────────────────────────────────────────────────
 
   const availablePresets = PRESET_CAMERA_NAMES.filter(
     (n) => !cameraStates.find((c) => c.name === n)
@@ -88,7 +115,6 @@ export default function CameraManager({
       height: DEFAULT_CAM_HEIGHT,
       quality: DEFAULT_CAM_QUALITY,
     });
-    // Start immediately after adding (setTimeout lets React sync the instance)
     setTimeout(() => {
       startSimulatedCamera(
         name,
@@ -97,6 +123,29 @@ export default function CameraManager({
       );
     }, 0);
     setAddCamOpen(false);
+  };
+
+  // Start all inactive real cameras that have a device selected.
+  // Sequential with a small gap so Windows drivers can settle between opens.
+  const handleStartAll = async () => {
+    const toStart = cameraStates.filter(
+      (cam) => !cam.isActive && !cam.isSimulated && selectedDevices[cam.name]
+    );
+    for (let i = 0; i < toStart.length; i++) {
+      if (i > 0) await new Promise((r) => setTimeout(r, 300));
+      await startCamera(toStart[i].name, selectedDevices[toStart[i].name]);
+    }
+  };
+
+  // ── Per-camera device selector + start ─────────────────────────────────
+
+  const handleDeviceSelect = (camName: string, deviceId: string) => {
+    setSelectedDevices((prev) => ({ ...prev, [camName]: deviceId }));
+  };
+
+  const handleStartCamera = async (camName: string) => {
+    const deviceId = selectedDevices[camName];
+    await startCamera(camName, deviceId || undefined);
   };
 
   // ── Status badge ─────────────────────────────────────────────────────────
@@ -108,6 +157,14 @@ export default function CameraManager({
     return { cls: "bg-zinc-700 text-zinc-400", label: "Off" };
   })();
 
+  // ── Resolve device label for active cameras ────────────────────────────
+
+  const deviceLabel = (deviceId: string | null): string | null => {
+    if (!deviceId || deviceId.startsWith("sim:")) return null;
+    const dev = availableDevices.find((d) => d.deviceId === deviceId);
+    return dev ? dev.label || deviceId.slice(0, 12) + "…" : deviceId.slice(0, 12) + "…";
+  };
+
   return (
     <div className="mb-3">
       {/* Header */}
@@ -115,108 +172,152 @@ export default function CameraManager({
         <span className="font-semibold text-xs uppercase tracking-wide opacity-70">
           Cameras ({cameraCount})
         </span>
-        <span className={`text-xs px-1.5 py-0.5 rounded ${statusBadge.cls}`}>
-          {statusBadge.label}
-        </span>
+        <div className="flex items-center gap-2">
+          {/* Start All button — only show when there are inactive real cameras */}
+          {cameraStates.some((c) => !c.isActive && !c.isSimulated) && !locked && (
+            <button
+              className="text-[10px] px-2 py-0.5 rounded bg-blue-600 hover:bg-blue-500 text-white"
+              onClick={handleStartAll}
+            >
+              Start All
+            </button>
+          )}
+          <span className={`text-xs px-1.5 py-0.5 rounded ${statusBadge.cls}`}>
+            {statusBadge.label}
+          </span>
+        </div>
       </div>
 
       {/* Camera list */}
       <div className="space-y-2 mb-2">
-        {cameraStates.map((cam) => (
-          <div key={cam.name} className="border border-white/10 rounded p-2">
-            {/* Name + status */}
-            <div className="flex items-center justify-between mb-1">
-              <span className="text-xs font-semibold flex items-center gap-1">
-                {cam.name}
-                {cam.isSimulated && (
-                  <span className="text-[9px] font-mono px-1 rounded bg-emerald-700/60 text-emerald-300 leading-tight">
-                    SIM
-                  </span>
-                )}
-              </span>
-              <div className="flex items-center gap-1">
-                <span
-                  className={`inline-block w-2 h-2 rounded-full ${
-                    cam.isActive ? "bg-green-400" : "bg-zinc-500"
-                  }`}
-                />
-                {!locked && (
+        {cameraStates.map((cam) => {
+          const activeDeviceLabel = cam.isActive ? deviceLabel(cam.deviceId) : null;
+
+          return (
+            <div key={cam.name} className="border border-white/10 rounded p-2">
+              {/* Name + status */}
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-xs font-semibold flex items-center gap-1">
+                  {cam.name}
+                  {cam.isSimulated && (
+                    <span className="text-[9px] font-mono px-1 rounded bg-emerald-700/60 text-emerald-300 leading-tight">
+                      SIM
+                    </span>
+                  )}
+                </span>
+                <div className="flex items-center gap-1">
+                  <span
+                    className={`inline-block w-2 h-2 rounded-full ${
+                      cam.isActive ? "bg-green-400" : "bg-zinc-500"
+                    }`}
+                  />
+                  {!locked && (
+                    <button
+                      className="text-xs text-zinc-400 hover:text-red-400 ml-1"
+                      onClick={() => {
+                        removeCamera(cam.name);
+                        setSelectedDevices((prev) => {
+                          const next = { ...prev };
+                          delete next[cam.name];
+                          return next;
+                        });
+                      }}
+                      title="Remove camera"
+                    >
+                      ×
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Active device indicator */}
+              {activeDeviceLabel && (
+                <div className="text-[10px] text-zinc-400 mb-1 truncate" title={activeDeviceLabel}>
+                  📷 {activeDeviceLabel}
+                </div>
+              )}
+
+              {/* Preview */}
+              <CameraPreview
+                name={cam.name}
+                getVideoElement={getVideoElement}
+                isActive={cam.isActive}
+              />
+
+              {/* Controls */}
+              <div className="mt-1 space-y-1">
+                {cam.isActive ? (
                   <button
-                    className="text-xs text-zinc-400 hover:text-red-400 ml-1"
-                    onClick={() => removeCamera(cam.name)}
-                    title="Remove camera"
+                    className="w-full bg-red-600/80 hover:bg-red-500 px-2 py-1 rounded text-xs"
+                    onClick={() => stopCamera(cam.name)}
+                    disabled={locked}
                   >
-                    ×
+                    Stop
                   </button>
+                ) : cam.isSimulated ? (
+                  <button
+                    className="w-full bg-emerald-700 hover:bg-emerald-600 px-2 py-1 rounded text-xs"
+                    onClick={() =>
+                      startSimulatedCamera(
+                        cam.name,
+                        cam.simulationType ?? "noise",
+                        cam.simulationType === "robot_view"
+                          ? robotViewCanvas ?? undefined
+                          : undefined
+                      )
+                    }
+                  >
+                    Restart Sim
+                  </button>
+                ) : (
+                  <>
+                    {/* Device selector — per camera */}
+                    {availableDevices.length > 0 ? (
+                      <select
+                        className="w-full bg-zinc-800 border border-zinc-600 rounded px-2 py-1 text-xs text-white"
+                        value={selectedDevices[cam.name] ?? ""}
+                        onChange={(e) => handleDeviceSelect(cam.name, e.target.value)}
+                      >
+                        <option value="">Select webcam…</option>
+                        {availableDevices.map((d, i) => {
+                          const inUse = usedDeviceIds.has(d.deviceId);
+                          return (
+                            <option
+                              key={d.deviceId}
+                              value={d.deviceId}
+                              disabled={inUse}
+                            >
+                              {shortLabel(d, i)}{inUse ? " (in use)" : ""}
+                            </option>
+                          );
+                        })}
+                      </select>
+                    ) : (
+                      <div className="text-[10px] text-zinc-500 italic py-0.5">
+                        No webcams detected — check permissions
+                      </div>
+                    )}
+                    <button
+                      className={`w-full px-2 py-1 rounded text-xs ${
+                        selectedDevices[cam.name]
+                          ? "bg-blue-600 hover:bg-blue-500 text-white"
+                          : "bg-zinc-700 text-zinc-500 cursor-not-allowed"
+                      }`}
+                      onClick={() => handleStartCamera(cam.name)}
+                      disabled={!selectedDevices[cam.name]}
+                    >
+                      Start
+                    </button>
+                  </>
                 )}
               </div>
-            </div>
 
-            {/* Preview */}
-            <CameraPreview
-              name={cam.name}
-              getVideoElement={getVideoElement}
-              isActive={cam.isActive}
-            />
-
-            {/* Controls */}
-            <div className="flex gap-1 mt-1">
-              {cam.isActive ? (
-                <button
-                  className="flex-1 bg-red-600/80 hover:bg-red-500 px-2 py-1 rounded text-xs"
-                  onClick={() => stopCamera(cam.name)}
-                  disabled={locked}
-                >
-                  Stop
-                </button>
-              ) : cam.isSimulated ? (
-                <button
-                  className="flex-1 bg-emerald-700 hover:bg-emerald-600 px-2 py-1 rounded text-xs"
-                  onClick={() =>
-                    startSimulatedCamera(
-                      cam.name,
-                      cam.simulationType ?? "noise",
-                      cam.simulationType === "robot_view"
-                        ? robotViewCanvas ?? undefined
-                        : undefined
-                    )
-                  }
-                >
-                  Restart Sim
-                </button>
-              ) : (
-                <>
-                  <button
-                    className="flex-1 bg-blue-600 hover:bg-blue-500 px-2 py-1 rounded text-xs"
-                    onClick={() => startCamera(cam.name)}
-                  >
-                    Start
-                  </button>
-                  {availableDevices.length > 0 && (
-                    <select
-                      className="bg-zinc-800 border border-zinc-600 rounded px-1 py-1 text-xs text-white max-w-[140px]"
-                      onChange={(e) => {
-                        if (e.target.value) startCamera(cam.name, e.target.value);
-                      }}
-                      defaultValue=""
-                    >
-                      <option value="">Choose device...</option>
-                      {availableDevices.map((d, i) => (
-                        <option key={d.deviceId} value={d.deviceId}>
-                          {d.label || `Camera ${i + 1}`}
-                        </option>
-                      ))}
-                    </select>
-                  )}
-                </>
+              {cam.error && (
+                <div className="mt-1 text-xs text-red-400">{cam.error}</div>
               )}
             </div>
-
-            {cam.error && (
-              <div className="mt-1 text-xs text-red-400">{cam.error}</div>
-            )}
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       {/* Add camera dropdown */}
@@ -226,7 +327,7 @@ export default function CameraManager({
             className="w-full bg-zinc-800 hover:bg-zinc-700 border border-zinc-600 rounded px-2 py-1.5 text-xs text-zinc-300 text-left flex items-center justify-between"
             onClick={() => setAddCamOpen((o) => !o)}
           >
-            <span>+ Add camera...</span>
+            <span>+ Add camera…</span>
             <span className="opacity-50 text-[10px]">{addCamOpen ? "▲" : "▼"}</span>
           </button>
 
@@ -255,7 +356,7 @@ export default function CameraManager({
                   handleAddPhysical(custom.trim().replace(/\s+/g, "_"));
                 }}
               >
-                Custom name...
+                Custom name…
               </button>
 
               {/* Simulated cameras */}
@@ -265,7 +366,7 @@ export default function CameraManager({
               {([
                 { label: "Noise test", type: "noise" as const, baseName: "sim_noise" },
                 { label: "Robot view (3D)", type: "robot_view" as const, baseName: "sim_robot" },
-              ]).map(({ label, type, baseName }) => {
+              ] as const).map(({ label, type, baseName }) => {
                 const existingNames = cameraStates.map((c) => c.name);
                 let simName: string = baseName;
                 let i = 2;

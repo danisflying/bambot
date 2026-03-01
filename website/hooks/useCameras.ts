@@ -166,52 +166,88 @@ export function useCameras() {
     [syncState]
   );
 
-  // Start a real camera's stream
+  // Start a real camera's stream.
+  // Includes retry logic for NotReadableError — on Windows, webcam drivers
+  // often hold exclusive locks and need time to release between stop/start.
   const startCamera = useCallback(
     async (name: string, deviceId?: string) => {
       const inst = instancesRef.current.get(name);
       if (!inst) return;
 
-      try {
-        if (inst.animFrameId !== undefined) {
-          cancelAnimationFrame(inst.animFrameId);
-          inst.animFrameId = undefined;
+      // ── Tear down any existing stream fully ────────────────────────────
+      if (inst.animFrameId !== undefined) {
+        cancelAnimationFrame(inst.animFrameId);
+        inst.animFrameId = undefined;
+      }
+      if (inst.stream) {
+        inst.stream.getTracks().forEach((t) => t.stop());
+        inst.stream = null;
+      }
+      inst.videoEl.srcObject = null;
+
+      const constraints: MediaStreamConstraints = {
+        video: {
+          width: { ideal: inst.config.width },
+          height: { ideal: inst.config.height },
+          ...(deviceId ? { deviceId: { exact: deviceId } } : {}),
+        },
+        audio: false,
+      };
+
+      // ── Attempt with retries (handles Windows driver release lag) ──────
+      const MAX_RETRIES = 3;
+      const RETRY_DELAY_MS = 500; // give the driver time to release
+
+      for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+        try {
+          // Small delay before first attempt too, to let any just-stopped
+          // track fully release (needed on Windows with exclusive-lock drivers)
+          if (attempt > 1) {
+            console.warn(
+              `Camera "${name}" retry ${attempt}/${MAX_RETRIES} after NotReadableError…`
+            );
+          }
+          await new Promise((r) => setTimeout(r, attempt === 1 ? 100 : RETRY_DELAY_MS));
+
+          const stream = await navigator.mediaDevices.getUserMedia(constraints);
+
+          inst.videoEl.srcObject = stream;
+          inst.videoEl.play().catch(() => {});
+
+          const track = stream.getVideoTracks()[0];
+          const settings = track.getSettings();
+
+          inst.stream = stream;
+          inst.isActive = true;
+          inst.isSimulated = false;
+          inst.simulationType = undefined;
+          inst.deviceId = settings.deviceId ?? deviceId ?? null;
+          inst.error = null;
+
+          syncState();
+          refreshDevices();
+          return; // success — exit
+        } catch (err) {
+          const isNotReadable =
+            err instanceof DOMException && err.name === "NotReadableError";
+
+          if (isNotReadable && attempt < MAX_RETRIES) {
+            // Retriable — Windows driver probably hasn't released yet
+            continue;
+          }
+
+          // Final failure
+          inst.isActive = false;
+          inst.error =
+            isNotReadable
+              ? "Device busy — close other apps using this camera and try again"
+              : err instanceof Error
+                ? err.message
+                : "Failed to start camera";
+          syncState();
+          console.error(`Camera "${name}" start error:`, err);
+          return;
         }
-        if (inst.stream) {
-          inst.stream.getTracks().forEach((t) => t.stop());
-        }
-
-        const constraints: MediaStreamConstraints = {
-          video: {
-            width: { ideal: inst.config.width },
-            height: { ideal: inst.config.height },
-            ...(deviceId ? { deviceId: { exact: deviceId } } : {}),
-          },
-          audio: false,
-        };
-
-        const stream = await navigator.mediaDevices.getUserMedia(constraints);
-
-        inst.videoEl.srcObject = stream;
-        inst.videoEl.play().catch(() => {});
-
-        const track = stream.getVideoTracks()[0];
-        const settings = track.getSettings();
-
-        inst.stream = stream;
-        inst.isActive = true;
-        inst.isSimulated = false;
-        inst.simulationType = undefined;
-        inst.deviceId = settings.deviceId ?? deviceId ?? null;
-        inst.error = null;
-
-        syncState();
-        refreshDevices();
-      } catch (err) {
-        inst.isActive = false;
-        inst.error = err instanceof Error ? err.message : "Failed to start camera";
-        syncState();
-        console.error(`Camera "${name}" start error:`, err);
       }
     },
     [syncState, refreshDevices]
