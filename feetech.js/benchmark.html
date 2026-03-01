@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Leader→Follower Latency Benchmark</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, monospace; background: #0d1117; color: #c9d1d9; padding: 20px; }
+    h1 { color: #58a6ff; margin-bottom: 8px; font-size: 22px; }
+    p.subtitle { color: #8b949e; margin-bottom: 20px; font-size: 13px; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; max-width: 1100px; }
+    .card { border: 1px solid #30363d; border-radius: 8px; padding: 16px; background: #161b22; }
+    .card h2 { font-size: 15px; color: #58a6ff; margin-bottom: 12px; border-bottom: 1px solid #21262d; padding-bottom: 8px; }
+    .card.full { grid-column: 1 / -1; }
+    label { font-size: 13px; display: inline-block; min-width: 120px; color: #8b949e; }
+    input { background: #0d1117; border: 1px solid #30363d; color: #c9d1d9; padding: 4px 8px; border-radius: 4px; width: 120px; font-family: monospace; }
+    button { padding: 6px 14px; border: 1px solid #30363d; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 600; margin: 4px 4px 4px 0; }
+    .btn-blue { background: #1f6feb; color: #fff; border-color: #1f6feb; }
+    .btn-blue:hover { background: #388bfd; }
+    .btn-green { background: #238636; color: #fff; border-color: #238636; }
+    .btn-green:hover { background: #2ea043; }
+    .btn-red { background: #da3633; color: #fff; border-color: #da3633; }
+    .btn-red:hover { background: #f85149; }
+    .btn-gray { background: #21262d; color: #c9d1d9; }
+    .btn-gray:hover { background: #30363d; }
+    button:disabled { opacity: 0.4; cursor: not-allowed; }
+    .status { font-weight: bold; font-size: 13px; }
+    .status.ok { color: #3fb950; }
+    .status.err { color: #f85149; }
+    .status.warn { color: #d29922; }
+
+    table { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 8px; }
+    th, td { text-align: left; padding: 6px 10px; border-bottom: 1px solid #21262d; }
+    th { color: #8b949e; font-weight: 600; }
+    td.num { text-align: right; font-family: monospace; }
+
+    .bar-container { height: 12px; background: #21262d; border-radius: 6px; overflow: hidden; position: relative; }
+    .bar { height: 100%; border-radius: 6px; transition: width 0.2s; }
+    .bar.green { background: linear-gradient(90deg, #238636, #3fb950); }
+    .bar.yellow { background: linear-gradient(90deg, #9e6a03, #d29922); }
+    .bar.red { background: linear-gradient(90deg, #da3633, #f85149); }
+
+    #log { background: #0d1117; border: 1px solid #30363d; border-radius: 4px; padding: 10px; max-height: 250px; overflow-y: auto; font-size: 12px; line-height: 1.5; white-space: pre-wrap; word-break: break-all; }
+    .live-hz { font-size: 32px; font-weight: bold; font-family: monospace; }
+    .live-ms { font-size: 16px; color: #8b949e; }
+    .metric-row { display: flex; gap: 24px; align-items: baseline; margin: 8px 0; }
+  </style>
+</head>
+<body>
+  <h1>Leader→Follower Latency Benchmark</h1>
+  <p class="subtitle">
+    Compares <b>Sequential reads</b> (one read per servo) vs <b>GroupSyncRead</b> (single bus transaction).
+    Connect a Feetech servo chain, enter the IDs, and run the benchmarks.
+  </p>
+
+  <div class="grid">
+    <!-- Connection -->
+    <div class="card">
+      <h2>1. Connection</h2>
+      <div style="margin-bottom:8px">
+        <label>Baud Rate</label>
+        <input id="baudRate" type="number" value="1000000">
+      </div>
+      <div style="margin-bottom:8px">
+        <label>Protocol End</label>
+        <input id="protocolEnd" type="number" value="0" min="0" max="1" style="width:50px">
+        <span style="color:#8b949e;font-size:12px">(0=STS/SMS, 1=SCS)</span>
+      </div>
+      <button id="connectBtn" class="btn-blue">Connect</button>
+      <button id="disconnectBtn" class="btn-gray">Disconnect</button>
+      <div style="margin-top:8px">
+        Status: <span id="connStatus" class="status err">Disconnected</span>
+      </div>
+    </div>
+
+    <!-- Servo config -->
+    <div class="card">
+      <h2>2. Servo IDs</h2>
+      <div style="margin-bottom:8px">
+        <label>IDs (csv)</label>
+        <input id="servoIds" type="text" value="1,2,3,4,5,6" style="width:200px">
+      </div>
+      <div style="margin-bottom:8px">
+        <label>Iterations</label>
+        <input id="iterations" type="number" value="100" style="width:80px">
+      </div>
+      <div style="margin-bottom:8px">
+        <label>Fast timeouts</label>
+        <input id="fastMode" type="checkbox" checked style="width:auto">
+        <span style="color:#8b949e;font-size:12px">(reduce read timeouts for speed)</span>
+      </div>
+      <button id="verifyBtn" class="btn-gray">Verify Servos</button>
+      <div id="verifyResult" style="margin-top:8px;font-size:13px"></div>
+    </div>
+
+    <!-- Benchmark controls -->
+    <div class="card full">
+      <h2>3. Run Benchmarks</h2>
+      <button id="runSeqBtn" class="btn-green">Run Sequential Read (N reads)</button>
+      <button id="runBatchBtn" class="btn-blue">Run GroupSyncRead (1 packet)</button>
+      <button id="runBothBtn" class="btn-gray">Run Both (side by side)</button>
+      <button id="runLiveSeqBtn" class="btn-green">Live Loop: Sequential</button>
+      <button id="runLiveBatchBtn" class="btn-blue">Live Loop: GroupSyncRead</button>
+      <button id="stopLiveBtn" class="btn-red" disabled>Stop Live</button>
+
+      <!-- Live display -->
+      <div id="liveDisplay" style="display:none; margin-top:12px; padding:12px; border:1px solid #30363d; border-radius:6px;">
+        <div class="metric-row">
+          <div>
+            <span id="liveHz" class="live-hz">—</span>
+            <span class="live-ms"> Hz</span>
+          </div>
+          <div>
+            <span id="liveMs" class="live-ms">— ms / cycle</span>
+          </div>
+          <div>
+            <span id="liveMethod" class="live-ms">—</span>
+          </div>
+          <div>
+            <span id="liveCycles" class="live-ms">0 cycles, 0 errors</span>
+          </div>
+        </div>
+        <div class="bar-container" style="margin-top:6px">
+          <div id="liveBar" class="bar green" style="width:100%"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Results -->
+    <div class="card full">
+      <h2>4. Results</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Method</th>
+            <th style="text-align:right">Servos</th>
+            <th style="text-align:right">Iterations</th>
+            <th style="text-align:right">Avg (ms)</th>
+            <th style="text-align:right">Min (ms)</th>
+            <th style="text-align:right">Max (ms)</th>
+            <th style="text-align:right">P95 (ms)</th>
+            <th style="text-align:right">Effective Hz</th>
+            <th style="text-align:right">Success %</th>
+            <th>Bar</th>
+          </tr>
+        </thead>
+        <tbody id="resultsBody">
+          <tr><td colspan="10" style="color:#484f58; text-align:center;">No results yet — run a benchmark above.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Log -->
+    <div class="card full">
+      <h2>Log</h2>
+      <pre id="log"></pre>
+    </div>
+  </div>
+
+  <script type="module">
+    import { ScsServoSDK } from './index.mjs';
+
+    const sdk = new ScsServoSDK();
+    let connected = false;
+    let liveRunning = false;
+    let liveCancelled = false;
+
+    // ── DOM refs ──────────────────────────────────────────────
+
+    const $ = (id) => document.getElementById(id);
+    const connStatus = $('connStatus');
+    const logEl = $('log');
+    const resultsBody = $('resultsBody');
+
+    // ── Helpers ───────────────────────────────────────────────
+
+    function log(msg) {
+      const ts = new Date().toLocaleTimeString('en-US', { hour12: false });
+      logEl.textContent = `[${ts}] ${msg}\n` + logEl.textContent;
+      if (logEl.textContent.length > 20000) logEl.textContent = logEl.textContent.slice(0, 15000);
+    }
+
+    function getServoIds() {
+      return $('servoIds').value.split(',').map(s => parseInt(s.trim(), 10)).filter(n => !isNaN(n) && n >= 1 && n <= 252);
+    }
+    function getIterations() {
+      return Math.max(1, parseInt($('iterations').value, 10) || 50);
+    }
+    function isFast() {
+      return $('fastMode').checked;
+    }
+
+    function percentile(sorted, p) {
+      const idx = Math.ceil(sorted.length * p / 100) - 1;
+      return sorted[Math.max(0, idx)];
+    }
+
+    function barColor(ms) {
+      if (ms <= 15) return 'green';
+      if (ms <= 35) return 'yellow';
+      return 'red';
+    }
+
+    // ── Connection ────────────────────────────────────────────
+
+    $('connectBtn').onclick = async () => {
+      try {
+        const baudRate = parseInt($('baudRate').value, 10);
+        const protocolEnd = parseInt($('protocolEnd').value, 10);
+        await sdk.connect({ baudRate, protocolEnd });
+        connected = true;
+        connStatus.textContent = 'Connected';
+        connStatus.className = 'status ok';
+        log(`Connected at ${baudRate} baud, protocolEnd=${protocolEnd}`);
+      } catch (e) {
+        connStatus.textContent = `Error: ${e.message}`;
+        connStatus.className = 'status err';
+        log(`Connection failed: ${e.message}`);
+      }
+    };
+
+    $('disconnectBtn').onclick = async () => {
+      try {
+        await sdk.disconnect();
+      } catch (_) {}
+      connected = false;
+      connStatus.textContent = 'Disconnected';
+      connStatus.className = 'status err';
+      log('Disconnected');
+    };
+
+    // ── Verify servos ─────────────────────────────────────────
+
+    $('verifyBtn').onclick = async () => {
+      if (!connected) { log('Not connected'); return; }
+      const ids = getServoIds();
+      const el = $('verifyResult');
+      el.textContent = 'Verifying...';
+      log(`Verifying servos: ${ids.join(', ')}`);
+
+      try {
+        const positions = await sdk.syncReadPositions(ids);
+        const found = [];
+        const missing = [];
+        for (const id of ids) {
+          if (positions.has(id)) found.push(`${id}(pos=${positions.get(id)})`);
+          else missing.push(id);
+        }
+        el.innerHTML = `<span class="status ok">Found: ${found.join(', ')}</span>` +
+          (missing.length ? `<br><span class="status warn">Missing: ${missing.join(', ')}</span>` : '');
+        log(`Found ${found.length}/${ids.length} servos`);
+      } catch (e) {
+        el.innerHTML = `<span class="status err">Error: ${e.message}</span>`;
+        log(`Verify error: ${e.message}`);
+      }
+    };
+
+    // ── Benchmark runner ──────────────────────────────────────
+
+    async function runBenchmark(method, label) {
+      if (!connected) { log('Not connected'); return null; }
+      const ids = getServoIds();
+      const iters = getIterations();
+      const fast = isFast();
+
+      if (ids.length === 0) { log('No servo IDs'); return null; }
+
+      log(`▶ ${label}: ${iters} iterations, ${ids.length} servos, fast=${fast}`);
+      disableBenchButtons(true);
+
+      const timings = [];
+      let errors = 0;
+      let successPositions = 0;
+
+      for (let i = 0; i < iters; i++) {
+        const t0 = performance.now();
+        try {
+          let positions;
+          if (method === 'sequential') {
+            positions = await sdk.syncReadPositions(ids, { fast });
+          } else {
+            positions = await sdk.syncReadPositionsBatch(ids, { fast });
+          }
+          const dt = performance.now() - t0;
+          timings.push(dt);
+          successPositions += positions.size;
+        } catch (e) {
+          const dt = performance.now() - t0;
+          timings.push(dt);
+          errors++;
+        }
+      }
+
+      const sorted = [...timings].sort((a, b) => a - b);
+      const avg = timings.reduce((a, b) => a + b, 0) / timings.length;
+      const min = sorted[0];
+      const max = sorted[sorted.length - 1];
+      const p95 = percentile(sorted, 95);
+      const hz = 1000 / avg;
+      const successRate = ((iters - errors) / iters * 100);
+      const avgPositionsPerRead = successPositions / (iters - errors || 1);
+
+      const result = { method, label, ids: ids.length, iters, avg, min, max, p95, hz, successRate, errors, avgPositionsPerRead };
+      addResultRow(result);
+      log(`✓ ${label}: avg=${avg.toFixed(1)}ms, min=${min.toFixed(1)}ms, max=${max.toFixed(1)}ms, p95=${p95.toFixed(1)}ms, ${hz.toFixed(0)}Hz, success=${successRate.toFixed(1)}%, avgServos=${avgPositionsPerRead.toFixed(1)}/${ids.length}`);
+
+      disableBenchButtons(false);
+      return result;
+    }
+
+    function addResultRow(r) {
+      // Remove placeholder row
+      const placeholder = resultsBody.querySelector('td[colspan]');
+      if (placeholder) placeholder.parentElement.remove();
+
+      const tr = document.createElement('tr');
+      const color = barColor(r.avg);
+      const barPct = Math.min(100, (r.avg / 60) * 100);
+      tr.innerHTML = `
+        <td><b>${r.label}</b></td>
+        <td class="num">${r.ids}</td>
+        <td class="num">${r.iters}</td>
+        <td class="num">${r.avg.toFixed(1)}</td>
+        <td class="num">${r.min.toFixed(1)}</td>
+        <td class="num">${r.max.toFixed(1)}</td>
+        <td class="num">${r.p95.toFixed(1)}</td>
+        <td class="num">${r.hz.toFixed(0)}</td>
+        <td class="num">${r.successRate.toFixed(1)}%</td>
+        <td style="width:120px"><div class="bar-container"><div class="bar ${color}" style="width:${barPct}%"></div></div></td>
+      `;
+      resultsBody.appendChild(tr);
+    }
+
+    function disableBenchButtons(disabled) {
+      ['runSeqBtn', 'runBatchBtn', 'runBothBtn', 'runLiveSeqBtn', 'runLiveBatchBtn'].forEach(id => $(id).disabled = disabled);
+    }
+
+    $('runSeqBtn').onclick = () => runBenchmark('sequential', 'Sequential');
+    $('runBatchBtn').onclick = () => runBenchmark('batch', 'GroupSyncRead');
+    $('runBothBtn').onclick = async () => {
+      await runBenchmark('sequential', 'Sequential');
+      await runBenchmark('batch', 'GroupSyncRead');
+    };
+
+    // ── Live loop ─────────────────────────────────────────────
+
+    async function runLive(method) {
+      if (!connected) { log('Not connected'); return; }
+      const ids = getServoIds();
+      const fast = isFast();
+      if (ids.length === 0) { log('No servo IDs'); return; }
+
+      liveRunning = true;
+      liveCancelled = false;
+      disableBenchButtons(true);
+      $('stopLiveBtn').disabled = false;
+      $('liveDisplay').style.display = '';
+      $('liveMethod').textContent = method === 'sequential' ? 'Sequential' : 'GroupSyncRead';
+
+      let cycles = 0, errors = 0;
+      const WINDOW = 20; // rolling average window
+      const recentMs = [];
+
+      log(`▶ Live ${method} started`);
+
+      while (!liveCancelled) {
+        const t0 = performance.now();
+        try {
+          let positions;
+          if (method === 'sequential') {
+            positions = await sdk.syncReadPositions(ids, { fast });
+          } else {
+            positions = await sdk.syncReadPositionsBatch(ids, { fast });
+          }
+          if (positions.size === 0) errors++;
+        } catch (e) {
+          errors++;
+        }
+        const dt = performance.now() - t0;
+        cycles++;
+        recentMs.push(dt);
+        if (recentMs.length > WINDOW) recentMs.shift();
+
+        const avgMs = recentMs.reduce((a, b) => a + b, 0) / recentMs.length;
+        const hz = 1000 / avgMs;
+
+        $('liveHz').textContent = hz.toFixed(0);
+        $('liveMs').textContent = `${avgMs.toFixed(1)} ms / cycle`;
+        $('liveCycles').textContent = `${cycles} cycles, ${errors} errors`;
+
+        const color = barColor(avgMs);
+        const liveBar = $('liveBar');
+        liveBar.className = `bar ${color}`;
+        liveBar.style.width = `${Math.min(100, (60 - avgMs) / 60 * 100)}%`;
+
+        // Brief yield to keep UI responsive
+        const wait = Math.max(0, 1 - dt);
+        if (wait > 0) await new Promise(r => setTimeout(r, wait));
+      }
+
+      log(`■ Live stopped: ${cycles} cycles, ${errors} errors`);
+      liveRunning = false;
+      disableBenchButtons(false);
+      $('stopLiveBtn').disabled = true;
+    }
+
+    $('runLiveSeqBtn').onclick = () => runLive('sequential');
+    $('runLiveBatchBtn').onclick = () => runLive('batch');
+    $('stopLiveBtn').onclick = () => { liveCancelled = true; };
+
+    // ── Init ──────────────────────────────────────────────────
+    log('Benchmark page loaded. Connect to a servo controller and run tests.');
+  </script>
+</body>
+</html>

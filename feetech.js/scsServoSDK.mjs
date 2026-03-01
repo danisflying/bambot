@@ -608,6 +608,66 @@ export class ScsServoSDK {
     return positions;
   }
 
+  /**
+   * Read positions using a single GroupSyncRead bus transaction.
+   * Sends ONE packet to request all servo positions simultaneously
+   * instead of N sequential read commands. Significantly faster but
+   * relies on all servos replying promptly.
+   *
+   * @param {number[]} servoIds
+   * @param {object}   [options]
+   * @param {boolean}  [options.fast=false] — use reduced timeouts for control loops
+   * @returns {Promise<Map<number, number>>}
+   */
+  async syncReadPositionsBatch(servoIds, options = {}) {
+    this.checkConnection();
+    if (!Array.isArray(servoIds) || servoIds.length === 0) {
+      return new Map();
+    }
+    const { fast = false } = options;
+
+    // Temporarily reduce timeouts for fast control-loop reads
+    let prevTimeout, prevPoll;
+    if (fast && this.portHandler) {
+      prevTimeout = this.portHandler.readTimeoutMs;
+      prevPoll = this.portHandler.readPollMs;
+      this.portHandler.readTimeoutMs = 80;
+      this.portHandler.readPollMs = 12;
+    }
+
+    const groupSyncRead = new GroupSyncRead(
+      this.portHandler,
+      this.packetHandler,
+      ADDR_SCS_PRESENT_POSITION,
+      2 // 2 bytes for position
+    );
+
+    for (const id of servoIds) {
+      if (id >= 1 && id <= 252) {
+        groupSyncRead.addParam(id);
+      }
+    }
+
+    try {
+      const result = await groupSyncRead.txRxPacket();
+      const positions = new Map();
+      if (result === COMM_SUCCESS) {
+        for (const id of servoIds) {
+          if (groupSyncRead.isAvailable(id, ADDR_SCS_PRESENT_POSITION, 2)) {
+            const pos = groupSyncRead.getData(id, ADDR_SCS_PRESENT_POSITION, 2);
+            positions.set(id, pos & 0xffff);
+          }
+        }
+      }
+      return positions;
+    } finally {
+      if (fast && this.portHandler) {
+        this.portHandler.readTimeoutMs = prevTimeout;
+        this.portHandler.readPollMs = prevPoll;
+      }
+    }
+  }
+
   async syncWritePositions(servoPositions) {
     this.checkConnection();
     const groupSyncWrite = new GroupSyncWrite(

@@ -959,91 +959,77 @@ export class GroupSyncRead {
     return await this.ph.syncReadTx(this.port, this.startAddress, this.dataLength, this.param, paramLength);
   }
 
+  /**
+   * Receive responses for all registered servo IDs.
+   * Uses an iterative (non-recursive) loop so that data already stored in
+   * `dataDict` is never accidentally zeroed out by a second call.
+   *
+   * @returns {number} COMM_SUCCESS when at least one servo responded, or an
+   *   error code if no usable data could be obtained.
+   */
   async rxPacket() {
-    let result = COMM_RX_FAIL;
-
     if (this.isAvailableServiceID.size === 0) {
       return COMM_NOT_AVAILABLE;
     }
 
-    // Set all servos' data as invalid
+    // Zero the data dict once, before the receive loop
     for (const id of this.isAvailableServiceID) {
       this.dataDict.set(id, new Array(this.dataLength).fill(0));
-      console.log(`Cleared data for servo ID ${id}`);
     }
 
-    const [rxpacket, rxResult] = await this.ph.rxPacket(this.port);
-    if (rxResult !== COMM_SUCCESS || !rxpacket || rxpacket.length === 0) {
-      return rxResult;
+    const pendingIds = new Set(this.isAvailableServiceID);
+    let receivedAny = false;
+
+    while (pendingIds.size > 0) {
+      const [rxpacket, rxResult] = await this.ph.rxPacket(this.port);
+
+      if (rxResult !== COMM_SUCCESS || !rxpacket || rxpacket.length === 0) {
+        // Timeout or corrupt — stop waiting for further responses
+        break;
+      }
+
+      const scsId = rxpacket[PKT_ID];
+
+      if (!pendingIds.has(scsId)) {
+        // Unexpected ID — skip but keep listening for others
+        continue;
+      }
+
+      if (rxpacket.length < PKT_PARAMETER0 + this.dataLength) {
+        // Packet too short — skip this servo
+        pendingIds.delete(scsId);
+        continue;
+      }
+
+      // Extract the parameter data
+      const data = new Array(this.dataLength);
+      for (let i = 0; i < this.dataLength; i++) {
+        data[i] = rxpacket[PKT_PARAMETER0 + i];
+      }
+      this.dataDict.set(scsId, data);
+      pendingIds.delete(scsId);
+      receivedAny = true;
     }
 
-    // More tolerant of packets with unexpected values in the PKT_ERROR field
-    // Don't require INST_STATUS to be exactly 0x55
-    console.log(`GroupSyncRead rxPacket: ID=${rxpacket[PKT_ID]}, ERROR/INST field=0x${rxpacket[PKT_ERROR].toString(16)}`);
-
-    // Check if the packet matches any of the available IDs
-    if (!this.isAvailableServiceID.has(rxpacket[PKT_ID])) {
-      console.log(`Received packet with ID ${rxpacket[PKT_ID]} which is not in the available IDs list`);
-      return COMM_RX_CORRUPT;
-    }
-
-    // Extract data for the matching ID
-    const scsId = rxpacket[PKT_ID];
-    const data = new Array(this.dataLength).fill(0);
-
-    // Extract the parameter data, which should start at PKT_PARAMETER0
-    if (rxpacket.length < PKT_PARAMETER0 + this.dataLength) {
-      console.log(`Packet too short: expected ${PKT_PARAMETER0 + this.dataLength} bytes, got ${rxpacket.length}`);
-      return COMM_RX_CORRUPT;
-    }
-
-    for (let i = 0; i < this.dataLength; i++) {
-      data[i] = rxpacket[PKT_PARAMETER0 + i];
-    }
-
-    // Update the data dict
-    this.dataDict.set(scsId, data);
-    console.log(`Updated data for servo ID ${scsId}: ${data.map(b => '0x' + b.toString(16).padStart(2,'0')).join(' ')}`);
-    
-    // Continue receiving until timeout or all data is received
-    if (this.isAvailableServiceID.size > 1) {
-      result = await this.rxPacket();
-    } else {
-      result = COMM_SUCCESS;
-    }
-
-    return result;
+    return receivedAny ? COMM_SUCCESS : COMM_RX_TIMEOUT;
   }
 
   async txRxPacket() {
     try {
-      // First check if port is being used
       if (this.port.isUsing) {
-        console.log("Port is busy, cannot start sync read operation");
         return COMM_PORT_BUSY;
       }
-      
-      // Start the transmission
-      console.log("Starting sync read TX/RX operation...");
+
       let result = await this.txPacket();
       if (result !== COMM_SUCCESS) {
-        console.log(`Sync read TX failed with result: ${result}`);
         return result;
       }
 
-      // Get a single response with a standard timeout
-      console.log(`Attempting to receive a response...`);
-      
-      // Receive a single response
       result = await this.rxPacket();
-      console.log(`Sync read RX result###: ${result}`);
-      // Release port
       this.port.isUsing = false;
-      
       return result;
     } catch (error) {
       console.error("Exception in GroupSyncRead txRxPacket:", error);
-      // Make sure port is released
       this.port.isUsing = false;
       return COMM_RX_FAIL;
     }

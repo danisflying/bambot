@@ -6,6 +6,10 @@ export type ConnectionOptions = {
 export type ServoPositions = Map<number, number> | Record<number, number>;
 export type ServoSpeeds = Map<number, number> | Record<number, number>; // New type alias for speeds
 
+export type SyncReadOptions = {
+  fast?: boolean;
+};
+
 export declare class ScsServoSDK {
   connect(options?: ConnectionOptions): Promise<true>;
   disconnect(): Promise<true>;
@@ -18,7 +22,10 @@ export declare class ScsServoSDK {
   setWheelMode(servoId: number): Promise<"success">;
   setPositionMode(servoId: number): Promise<"success">;
   writeWheelSpeed(servoId: number, speed: number): Promise<"success">;
-  syncReadPositions(servoIds: number[]): Promise<Map<number, number>>;
+  /** Read positions sequentially — one read command per servo */
+  syncReadPositions(servoIds: number[], options?: SyncReadOptions): Promise<Map<number, number>>;
+  /** Read positions via a single GroupSyncRead bus transaction (faster, requires stable bus) */
+  syncReadPositionsBatch(servoIds: number[], options?: SyncReadOptions): Promise<Map<number, number>>;
   syncWritePositions(servoPositions: ServoPositions): Promise<"success">;
   syncWriteWheelSpeed(servoSpeeds: ServoSpeeds): Promise<"success">;
   setBaudRate(servoId: number, baudRateIndex: number): Promise<"success">;
