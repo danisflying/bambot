@@ -106,6 +106,9 @@ export class PortHandler {
     this.packetStartTime = 0;
     this.packetTimeout = 0;
     this.txTimePerByte = 0;
+    // Configurable read timeout (ms) — lower for fast control loops
+    this.readTimeoutMs = 500;
+    this.readPollMs = 100;
   }
   
   async requestPort() {
@@ -190,8 +193,8 @@ export class PortHandler {
     }
     
     try {
-      // Increase timeout for more reliable data reception
-      const timeoutMs = 500; 
+      const timeoutMs = this.readTimeoutMs;
+      const pollMs = this.readPollMs;
       let totalBytes = [];
       const startTime = performance.now();
       
@@ -199,7 +202,7 @@ export class PortHandler {
       while (totalBytes.length < length) {
         // Create a timeout promise
         const timeoutPromise = new Promise(resolve => {
-          setTimeout(() => resolve({ value: new Uint8Array(), done: false, timeout: true }), 100); // Short internal timeout
+          setTimeout(() => resolve({ value: new Uint8Array(), done: false, timeout: true }), pollMs);
         });
         
         // Race between reading and timeout

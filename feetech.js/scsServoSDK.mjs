@@ -558,36 +558,51 @@ export class ScsServoSDK {
     }
   }
 
-  async syncReadPositions(servoIds) {
+  /**
+   * Read positions from multiple servos sequentially.
+   * @param {number[]} servoIds
+   * @param {object} [options]
+   * @param {boolean} [options.fast=false] — use reduced timeouts for control loops
+   */
+  async syncReadPositions(servoIds, options = {}) {
     this.checkConnection();
     if (!Array.isArray(servoIds) || servoIds.length === 0) {
-      console.log("Sync Read: No servo IDs provided.");
       return new Map();
     }
+    const { fast = false } = options;
     const startAddress = ADDR_SCS_PRESENT_POSITION;
     const positions = new Map();
-    for (const id of servoIds) {
-      if (id < 1 || id > 252) {
-        console.warn(`Sync Read: Invalid servo ID ${id} skipped.`);
-        continue;
-      }
-      try {
-        const [pos, result, error] = await this.packetHandler.read2ByteTxRx(
-          this.portHandler,
-          id,
-          startAddress
-        );
-        if (result === COMM_SUCCESS) {
-          positions.set(id, pos & 0xffff);
-        } else {
-          console.warn(
-            `Sync Read: Failed to read position for servo ID ${id}: ${this.packetHandler.getTxRxResult(
-              result
-            )}, Error: ${error}`
+
+    // Temporarily reduce timeouts for fast control-loop reads
+    let prevTimeout, prevPoll;
+    if (fast && this.portHandler) {
+      prevTimeout = this.portHandler.readTimeoutMs;
+      prevPoll = this.portHandler.readPollMs;
+      this.portHandler.readTimeoutMs = 50;
+      this.portHandler.readPollMs = 12;
+    }
+
+    try {
+      for (const id of servoIds) {
+        if (id < 1 || id > 252) continue;
+        try {
+          const [pos, result, error] = await this.packetHandler.read2ByteTxRx(
+            this.portHandler,
+            id,
+            startAddress
           );
+          if (result === COMM_SUCCESS) {
+            positions.set(id, pos & 0xffff);
+          }
+        } catch (e) {
+          // Skip failed servo, continue reading others
         }
-      } catch (e) {
-        console.warn(`Sync Read: Exception reading servo ID ${id}:`, e);
+      }
+    } finally {
+      // Restore original timeouts
+      if (fast && this.portHandler) {
+        this.portHandler.readTimeoutMs = prevTimeout;
+        this.portHandler.readPollMs = prevPoll;
       }
     }
     return positions;

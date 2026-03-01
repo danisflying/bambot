@@ -14,7 +14,7 @@ import { LeaderConnectionHelpDialog } from "./LeaderConnectionHelpDialog";
  * - onHide: () => void
  */
 
-const SYNC_INTERVAL = 10; // ms
+const SYNC_INTERVAL = 10; // ms — target interval between leader reads
 
 const LeaderControl = ({
   leaderControl,
@@ -36,24 +36,39 @@ const LeaderControl = ({
   const [connectionStatus, setConnectionStatus] = useState<
     "idle" | "connecting" | "disconnecting"
   >("idle");
+  const [loopLatencyMs, setLoopLatencyMs] = useState<number | null>(null);
   const [ref, bounds] = useMeasure();
 
-  // Periodically fetch positionChange and sync
+  // Self-scheduling async loop — prevents overlap when reads take longer than SYNC_INTERVAL
   useEffect(() => {
     if (!isConnected) return;
-    let timer = setInterval(async () => {
-      const positions = await getPositions();
-      // If positions map is empty, it might be due to disconnection or an error.
-      // Avoid updating angles to prevent them from resetting to 0.
-      if (positions.size === 0) return;
-      const leaderAngles = revoluteJoints.map((j) => ({
-        servoId: j.servoId,
-        angle: servoPositionToAngle(positions.get(j.servoId) ?? 0),
-      }));
-      setAngles(leaderAngles);
-      onSync(leaderAngles);
-    }, SYNC_INTERVAL);
-    return () => clearInterval(timer);
+    let cancelled = false;
+
+    const tick = async () => {
+      while (!cancelled) {
+        const t0 = performance.now();
+        try {
+          const positions = await getPositions();
+          if (positions.size > 0 && !cancelled) {
+            const leaderAngles = revoluteJoints.map((j) => ({
+              servoId: j.servoId,
+              angle: servoPositionToAngle(positions.get(j.servoId) ?? 0),
+            }));
+            setAngles(leaderAngles);
+            onSync(leaderAngles);
+          }
+        } catch (e) {
+          console.error("Leader sync error:", e);
+        }
+        const elapsed = performance.now() - t0;
+        setLoopLatencyMs(Math.round(elapsed));
+        const wait = Math.max(1, SYNC_INTERVAL - elapsed);
+        if (!cancelled) await new Promise((r) => setTimeout(r, wait));
+      }
+    };
+
+    tick();
+    return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isConnected, revoluteJoints, getPositions, onSync]);
 
@@ -150,6 +165,19 @@ const LeaderControl = ({
                 </tbody>
               </table>
             </div>
+            {/* Latency indicator */}
+            {isConnected && loopLatencyMs !== null && (
+              <div className="mt-2 text-xs text-gray-400 flex items-center gap-2">
+                <span>Loop latency:</span>
+                <span className={loopLatencyMs <= 15 ? "text-green-400" : loopLatencyMs <= 30 ? "text-yellow-400" : "text-red-400"}>
+                  {loopLatencyMs}ms
+                </span>
+                <span className="text-gray-500">
+                  ({Math.min(Math.round(1000 / Math.max(loopLatencyMs, 1)), 1000)} Hz)
+                </span>
+              </div>
+            )}
+
             <div className="mt-4 flex justify-between items-center gap-2">
               {isConnected ? (
                 <button
