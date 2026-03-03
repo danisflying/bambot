@@ -17,7 +17,9 @@ import LeaderControlButton from "../playground/controlButtons/LeaderControlButto
 import RecordButton from "./controlButtons/RecordButton";
 import RecordControl from "./recordControl/RecordControl";
 import EpisodeButton from "./controlButtons/EpisodeButton";
+import PlaybackButton from "./controlButtons/PlaybackButton";
 import EpisodeControl from "./episodeControl/EpisodeControl";
+import EpisodePlayback from "./episodePlayback/EpisodePlayback";
 import {
   getPanelStateFromLocalStorage,
   setPanelStateToLocalStorage,
@@ -64,6 +66,9 @@ export default function RobotLoader({ robotName }: RobotLoaderProps) {
   });
   const [showEpisodeControl, setShowEpisodeControl] = useState(() => {
     return getPanelStateFromLocalStorage("episodeControl", robotName) ?? false;
+  });
+  const [showPlaybackControl, setShowPlaybackControl] = useState(() => {
+    return getPanelStateFromLocalStorage("playbackControl", robotName) ?? false;
   });
   // Ref to the Three.js renderer canvas for robot_view simulated camera
   const robotCanvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -160,6 +165,14 @@ export default function RobotLoader({ robotName }: RobotLoaderProps) {
     });
   };
 
+  const togglePlaybackControl = () => {
+    setShowPlaybackControl((prev) => {
+      const newState = !prev;
+      setPanelStateToLocalStorage("playbackControl", newState, robotName);
+      return newState;
+    });
+  };
+
   const hideControlPanel = () => {
     setShowControlPanel(false);
     setPanelStateToLocalStorage("keyboardControl", false, robotName);
@@ -183,6 +196,11 @@ export default function RobotLoader({ robotName }: RobotLoaderProps) {
   const hideEpisodeControl = () => {
     setShowEpisodeControl(false);
     setPanelStateToLocalStorage("episodeControl", false, robotName);
+  };
+
+  const hidePlaybackControl = () => {
+    setShowPlaybackControl(false);
+    setPanelStateToLocalStorage("playbackControl", false, robotName);
   };
 
   return (
@@ -288,6 +306,14 @@ export default function RobotLoader({ robotName }: RobotLoaderProps) {
         robotViewCanvas={robotCanvasRef.current}
       />
 
+      {/* Episode Playback overlay */}
+      <EpisodePlayback
+        show={showPlaybackControl}
+        onHide={hidePlaybackControl}
+        updateJointsDegrees={updateJointsDegrees}
+        jointDetails={jointDetails}
+      />
+
       <div className="absolute bottom-5 left-0 right-0">
         <div className="flex justify-center items-center">
           <div className="flex gap-2 max-w-md">
@@ -310,6 +336,10 @@ export default function RobotLoader({ robotName }: RobotLoaderProps) {
             <EpisodeButton
               showControlPanel={showEpisodeControl}
               onToggleControlPanel={toggleEpisodeControl}
+            />
+            <PlaybackButton
+              showControlPanel={showPlaybackControl}
+              onToggleControlPanel={togglePlaybackControl}
             />
           </div>
         </div>

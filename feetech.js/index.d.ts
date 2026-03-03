@@ -1,6 +1,19 @@
 export type ConnectionOptions = {
   baudRate?: number;
   protocolEnd?: number;
+  /**
+   * Optional factory that returns a PortHandler-compatible transport object.
+   * Use this to swap the default Web Serial transport for an alternative
+   * implementation (e.g. ElectronPortHandler for native serial access).
+   *
+   * @example
+   * // Electron renderer process
+   * import { ElectronPortHandler } from '@/lib/ElectronPortHandler';
+   * await sdk.connect({
+   *   portHandlerFactory: () => new ElectronPortHandler({ portPath: '/dev/ttyUSB0' }),
+   * });
+   */
+  portHandlerFactory?: () => unknown;
 };
 
 export type ServoPositions = Map<number, number> | Record<number, number>;

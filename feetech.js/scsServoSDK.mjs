@@ -44,9 +44,13 @@ export class ScsServoSDK {
       console.log("Already connected.");
       return true;
     }
-    const { baudRate = 1000000, protocolEnd = 0 } = options;
+    // portHandlerFactory: optional () => PortHandler-compatible object.
+    // Allows alternative transports (e.g. ElectronPortHandler) to be injected
+    // without changing the rest of the SDK. When omitted the default Web Serial
+    // PortHandler is used (browser behaviour unchanged).
+    const { baudRate = 1000000, protocolEnd = 0, portHandlerFactory } = options;
     try {
-      this.portHandler = new PortHandler();
+      this.portHandler = portHandlerFactory ? portHandlerFactory() : new PortHandler();
       const portRequested = await this.portHandler.requestPort();
       if (!portRequested) {
         this.portHandler = null;

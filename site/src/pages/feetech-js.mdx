@@ -1,0 +1,58 @@
+---
+layout: ../layouts/Base.astro
+title: "feetech.js — BamBot"
+description: "JavaScript SDK for Feetech STS/SCS series servo motors."
+---
+
+# feetech.js
+
+> JavaScript SDK for controlling Feetech STS/SCS series servo motors via Web Serial or native serial.
+
+## Installation
+
+```bash
+npm install feetech.js
+```
+
+## Quick Start
+
+```js
+import { ScsServoSDK } from "feetech.js";
+
+const sdk = new ScsServoSDK();
+
+// Connect to serial port (Web Serial in browser, or native in Electron)
+await sdk.connect();
+
+// Read servo position (ID 1)
+const position = await sdk.readPosition(1);
+console.log("Position:", position); // 0–4096
+
+// Write servo position
+await sdk.writePosition(1, 2048); // Move to center
+```
+
+## API Reference
+
+### `ScsServoSDK`
+
+The main class for communicating with Feetech servos.
+
+#### `connect(options?)`
+Open a serial connection. In the browser this triggers the Web Serial permission prompt. In Electron, use the native serial transport.
+
+#### `readPosition(servoId: number): Promise<number>`
+Read the current position of a servo (0–4096 range = 0°–360°).
+
+#### `writePosition(servoId: number, position: number): Promise<void>`
+Command a servo to move to a target position.
+
+#### `syncReadPositions(servoIds: number[]): Promise<number[]>`
+Read positions of multiple servos in a single bus transaction.
+
+#### `syncWritePositions(servoIds: number[], positions: number[]): Promise<void>`
+Write positions to multiple servos simultaneously.
+
+---
+
+For the full source code, see the [feetech.js directory on GitHub](https://github.com/timqian/bambot/tree/main/feetech.js).

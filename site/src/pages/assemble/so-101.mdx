@@ -1,0 +1,52 @@
+---
+layout: ../../layouts/Base.astro
+title: "Assemble SO-101 — BamBot"
+description: "Step-by-step assembly guide for the SO-101 robot arm."
+---
+
+# Assemble SO-101
+
+> Step-by-step guide to build your SO-101 robot arm.
+
+## 1. Source Parts
+
+You will need the following components to build the SO-101:
+
+- **6× STS3215 servo motors** — Feetech STS3215 (30 kg·cm torque, 360° continuous)
+- **3D-printed parts** — Print from [SO-101 STL files on HuggingFace](https://huggingface.co/datasets/bambot/robot-URDFs)
+- **M2 & M3 screws** — Various lengths, see BOM below
+- **USB-C serial adapter** — For connecting servos to your computer
+- **Power supply** — 7.4V 2A for the servo bus
+
+> **Tip:** Check the [BOM spreadsheet](https://docs.google.com/spreadsheets/d/1jFnMNLZVJYPaulhGDL8MsjcVNWEfBgJA9jlDlXOg-bE) for exact part numbers and links.
+
+## 2. Assembly Instructions
+
+Follow the detailed assembly video and the [HuggingFace SO-101 guide](https://huggingface.co/docs/lerobot/so101) for step-by-step instructions with photos.
+
+The assembly process involves:
+1. Attaching servos to the 3D-printed base
+2. Connecting the linkage arms
+3. Wiring the servo bus daisy chain
+4. Mounting the gripper
+
+## 3. Configure Motors
+
+Before use, each servo must be assigned a unique ID (1–6) using the Feetech debug tool or the [BamBot desktop app](https://github.com/timqian/bambot/releases/latest).
+
+| Joint       | Servo ID |
+|-------------|----------|
+| Rotation    | 1        |
+| Pitch       | 2        |
+| Elbow       | 3        |
+| Wrist Pitch | 4        |
+| Wrist Roll  | 5        |
+| Jaw         | 6        |
+
+## 4. Calibrate
+
+Calibrate your robot by following the [calibration guide](https://huggingface.co/docs/lerobot/so101#calibrate). This ensures the leader and follower arms are synchronized correctly.
+
+---
+
+*For the interactive assembly guide with photos and configuration tool, download the [BamBot desktop app](https://github.com/timqian/bambot/releases/latest).*

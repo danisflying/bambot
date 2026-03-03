@@ -1,0 +1,42 @@
+---
+import Base from "../layouts/Base.astro";
+---
+
+<Base title="BamBot — Desktop Robot Control" description="Download BamBot desktop app to control and train robots.">
+  <section class="max-w-4xl mx-auto px-6 py-24 text-center">
+    <h1 class="text-6xl font-bold mb-6">BamBot</h1>
+    <p class="text-2xl text-zinc-400 mb-12">Make it easy to play with robots 🤖</p>
+
+    <div class="flex flex-col sm:flex-row gap-4 justify-center mb-16">
+      <a
+        href="https://github.com/timqian/bambot/releases/latest"
+        class="inline-flex items-center justify-center px-8 py-3 rounded-lg bg-green-600 hover:bg-green-500 text-white font-semibold text-lg transition-colors"
+      >
+        Download Desktop App
+      </a>
+      <a
+        href="https://github.com/timqian/bambot"
+        target="_blank"
+        rel="noopener noreferrer"
+        class="inline-flex items-center justify-center px-8 py-3 rounded-lg border border-zinc-600 hover:border-zinc-400 text-zinc-300 hover:text-white font-semibold text-lg transition-colors"
+      >
+        View on GitHub
+      </a>
+    </div>
+
+    <div class="grid grid-cols-1 sm:grid-cols-3 gap-6 text-left">
+      <div class="p-6 rounded-xl border border-zinc-800 bg-zinc-900/50">
+        <h3 class="font-semibold text-lg mb-2">🎮 Direct Control</h3>
+        <p class="text-sm text-zinc-400">Native serial access with sub-millisecond latency. Keyboard, leader-follower, and AI control modes.</p>
+      </div>
+      <div class="p-6 rounded-xl border border-zinc-800 bg-zinc-900/50">
+        <h3 class="font-semibold text-lg mb-2">📹 Episode Recording</h3>
+        <p class="text-sm text-zinc-400">Record demonstrations at 100 Hz with synchronized camera capture. Stream directly to disk.</p>
+      </div>
+      <div class="p-6 rounded-xl border border-zinc-800 bg-zinc-900/50">
+        <h3 class="font-semibold text-lg mb-2">🧠 Training Pipeline</h3>
+        <p class="text-sm text-zinc-400">Train and deploy ACT policies from recorded episodes. Full Python integration built in.</p>
+      </div>
+    </div>
+  </section>
+</Base>
