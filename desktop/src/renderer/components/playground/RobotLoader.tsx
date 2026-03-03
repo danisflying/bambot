@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, Suspense } from "react";
+import { useEffect, useRef, useState, useCallback, Suspense } from "react";
 import { robotConfigMap } from "@/config/robotConfig";
 import * as THREE from "three";
 import { Html, useProgress } from "@react-three/drei";
@@ -201,6 +201,28 @@ export default function RobotLoader({ robotName }: RobotLoaderProps) {
     setPanelStateToLocalStorage("playbackControl", false, robotName);
   };
 
+  // Stable callback for leader→follower sync.  Defined with useCallback so
+  // LeaderControl's tick loop effect doesn't restart on every parent render.
+  const handleLeaderSync = useCallback(
+    (leaderAngles: { servoId: number; angle: number }[]) => {
+      const revoluteJoints = jointDetails.filter(
+        (j) => j.jointType === "revolute"
+      );
+      const revoluteServoIds = new Set(
+        revoluteJoints.map((j) => j.servoId)
+      );
+      updateJointsDegrees(
+        leaderAngles
+          .filter((la) => revoluteServoIds.has(la.servoId))
+          .map(({ servoId, angle }) => ({
+            servoId,
+            value: angle,
+          }))
+      );
+    },
+    [jointDetails, updateJointsDegrees]
+  );
+
   return (
     <>
       <Canvas
@@ -251,24 +273,7 @@ export default function RobotLoader({ robotName }: RobotLoaderProps) {
         onHide={hideLeaderControl}
         leaderControl={leaderControl}
         jointDetails={jointDetails}
-        onSync={(leaderAngles: { servoId: number; angle: number }[]) => {
-          const revoluteJoints = jointDetails.filter(
-            (j) => j.jointType === "revolute"
-          );
-          const revoluteServoIds = new Set(
-            revoluteJoints.map((j) => j.servoId)
-          );
-          updateJointsDegrees(
-            leaderAngles
-              .filter((la) => revoluteServoIds.has(la.servoId))
-              .map(
-                ({ servoId, angle }: { servoId: number; angle: number }) => ({
-                  servoId,
-                  value: angle,
-                })
-              )
-          );
-        }}
+        onSync={handleLeaderSync}
       />
 
       {/* Record Control overlay */}

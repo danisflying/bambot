@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import { servoPositionToAngle } from "@/lib/utils";
 import { Rnd } from "react-rnd";
 import useMeasure from "react-use-measure";
@@ -24,7 +24,10 @@ const LeaderControl = ({
   show = true,
   onHide,
 }) => {
-  const revoluteJoints = jointDetails.filter((j) => j.jointType === "revolute");
+  const revoluteJoints = useMemo(
+    () => jointDetails.filter((j) => j.jointType === "revolute"),
+    [jointDetails]
+  );
   const { isConnected, connectLeader, disconnectLeader, getPositions } =
     leaderControl;
   const [angles, setAngles] = useState(
@@ -44,7 +47,19 @@ const LeaderControl = ({
   const isElectron = typeof window !== "undefined" && !!window.electron;
   const [selectedPort, setSelectedPort] = useState<string | null>(null);
 
-  // Self-scheduling async loop — prevents overlap when reads take longer than SYNC_INTERVAL
+  // Use refs for values accessed inside the async tick loop so the effect
+  // only restarts when `isConnected` changes — not on every render.
+  const onSyncRef = useRef(onSync);
+  const getPositionsRef = useRef(getPositions);
+  const revoluteJointsRef = useRef(revoluteJoints);
+  useEffect(() => { onSyncRef.current = onSync; }, [onSync]);
+  useEffect(() => { getPositionsRef.current = getPositions; }, [getPositions]);
+  useEffect(() => { revoluteJointsRef.current = revoluteJoints; }, [revoluteJoints]);
+
+  // Self-scheduling async loop — prevents overlap when reads take longer than SYNC_INTERVAL.
+  // The effect depends ONLY on `isConnected` so it doesn't restart on every
+  // parent re-render (which was previously causing concurrent serial reads and
+  // the "Port is busy" / COMM_PORT_BUSY errors).
   useEffect(() => {
     if (!isConnected) return;
     let cancelled = false;
@@ -53,14 +68,15 @@ const LeaderControl = ({
       while (!cancelled) {
         const t0 = performance.now();
         try {
-          const positions = await getPositions();
+          const positions = await getPositionsRef.current();
           if (positions.size > 0 && !cancelled) {
-            const leaderAngles = revoluteJoints.map((j) => ({
+            const joints = revoluteJointsRef.current;
+            const leaderAngles = joints.map((j) => ({
               servoId: j.servoId,
               angle: servoPositionToAngle(positions.get(j.servoId) ?? 0),
             }));
             setAngles(leaderAngles);
-            onSync(leaderAngles);
+            onSyncRef.current(leaderAngles);
           }
         } catch (e) {
           console.error("Leader sync error:", e);
@@ -74,8 +90,7 @@ const LeaderControl = ({
 
     tick();
     return () => { cancelled = true; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isConnected, revoluteJoints, getPositions, onSync]);
+  }, [isConnected]);
 
   // Initially position to bottom left corner
   useEffect(() => {
