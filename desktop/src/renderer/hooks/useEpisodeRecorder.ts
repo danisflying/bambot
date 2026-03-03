@@ -13,8 +13,9 @@ import { servoPositionToAngle } from "@/lib/utils";
 type GrabFrameBase64Fn = () => string | null;
 
 export type EpisodeRecorderDeps = {
-  /** Function to read leader arm positions — returns Map<servoId, rawServoPosition> */
-  getLeaderPositions: () => Promise<Map<number, number>>;
+  /** Synchronous getter for the last-read leader arm positions (from tick loop cache).
+   *  Returns Map<servoId, rawServoPosition>. No serial I/O — avoids port contention. */
+  getLeaderPositions: () => Map<number, number>;
   /** Current follower joint states — we read the last-commanded angles */
   getFollowerAngles: () => number[];
   /** Ordered servo IDs matching the joint order */
@@ -72,6 +73,9 @@ export function useEpisodeRecorder(
   const episodeIdRef = useRef(0); // avoids stale closure on state.currentEpisodeId
   const configRef = useRef(config);
   const depsRef = useRef(deps);
+  /** Last valid qpos — used as fallback to avoid recording 0-degree frames
+   *  when the leader read cache is momentarily empty. */
+  const lastQposRef = useRef<number[] | null>(null);
 
   // Keep refs in sync every render
   configRef.current = config;
@@ -94,16 +98,20 @@ export function useEpisodeRecorder(
       const now = performance.now();
       const timestamp_ms = Math.round(now - startTimeRef.current);
 
-      // 1. Read leader arm positions (observation qpos)
+      // 1. Read leader arm positions (observation qpos) — synchronous, from
+      //    the tick loop’s cached snapshot.  No serial I/O, no port contention.
+      const posMap = getLeaderPositions();
       let qpos: number[];
-      try {
-        const posMap = await getLeaderPositions();
+      if (posMap.size > 0) {
         qpos = servoIds.map((id) => {
           const raw = posMap.get(id);
           return raw !== undefined ? servoPositionToAngle(raw) : 0;
         });
-      } catch {
-        qpos = servoIds.map(() => 0);
+        lastQposRef.current = qpos;
+      } else {
+        // Cache empty (leader tick hasn’t run yet or failed) — re-use last
+        // known qpos instead of recording all-zero.
+        qpos = lastQposRef.current ?? servoIds.map(() => 0);
       }
 
       // 2. Read follower joint angles (action — what was commanded)

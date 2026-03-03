@@ -58,6 +58,13 @@ export function useLeaderRobotControl(servoIds: number[]) {
     }
   }, []);
 
+  // ── Cached last-read positions ──────────────────────────────────────────
+  // Updated by getPositions() on every successful read.  Consumers that only
+  // need the most-recent snapshot (e.g. the episode recorder) can call the
+  // synchronous getLastPositions() instead of getPositions(), avoiding a
+  // second serial transaction that would contend with the main tick loop.
+  const lastPositionsRef = useRef<Map<number, number>>(new Map());
+
   // Get joint positions (fast mode for low-latency control loops)
   // Uses syncReadPositionsBatch (single GroupSyncRead transaction) instead of
   // syncReadPositions (N sequential reads) to minimise IPC round-trips.
@@ -65,17 +72,25 @@ export function useLeaderRobotControl(servoIds: number[]) {
     if (!isConnected || readableServoIds.length === 0) return new Map();
     try {
       const pos = await scsServoSDK.syncReadPositionsBatch(readableServoIds, { fast: true });
-      return new Map<number, number>(pos);
+      const map = new Map<number, number>(pos);
+      if (map.size > 0) lastPositionsRef.current = map;
+      return map;
     } catch (e) {
       console.error("Error reading positions:", e);
       return new Map();
     }
   }, [isConnected, readableServoIds]);
 
+  /** Return the last successfully read positions (synchronous, no serial I/O). */
+  const getLastPositions = useCallback((): Map<number, number> => {
+    return lastPositionsRef.current;
+  }, []);
+
   return {
     isConnected,
     connectLeader,
     disconnectLeader,
     getPositions,
+    getLastPositions,
   };
 }

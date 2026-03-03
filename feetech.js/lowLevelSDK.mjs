@@ -1025,9 +1025,13 @@ export class GroupSyncRead {
       if (this.port.isUsing) {
         return COMM_PORT_BUSY;
       }
+      // Lock the port BEFORE starting I/O — prevents concurrent
+      // GroupSyncRead / txRxPacket operations from interleaving.
+      this.port.isUsing = true;
 
       let result = await this.txPacket();
       if (result !== COMM_SUCCESS) {
+        this.port.isUsing = false;
         return result;
       }
 

@@ -44,6 +44,9 @@ export function useLeaderRobotControl(servoIds: number[]) {
     }
   }, []);
 
+  // ── Cached last-read positions ──────────────────────────────────────────
+  const lastPositionsRef = useRef<Map<number, number>>(new Map());
+
   // Get joint positions (fast mode for low-latency control loops)
   // Uses syncReadPositionsBatch (single GroupSyncRead transaction) instead of
   // syncReadPositions (N sequential reads) to minimise serial round-trips.
@@ -51,17 +54,25 @@ export function useLeaderRobotControl(servoIds: number[]) {
     if (!isConnected || readableServoIds.length === 0) return new Map();
     try {
       const pos = await scsServoSDK.syncReadPositionsBatch(readableServoIds, { fast: true });
-      return new Map<number, number>(pos);
+      const map = new Map<number, number>(pos);
+      if (map.size > 0) lastPositionsRef.current = map;
+      return map;
     } catch (e) {
       console.error("Error reading positions:", e);
       return new Map();
     }
   }, [isConnected, readableServoIds]);
 
+  /** Return the last successfully read positions (synchronous, no serial I/O). */
+  const getLastPositions = useCallback((): Map<number, number> => {
+    return lastPositionsRef.current;
+  }, []);
+
   return {
     isConnected,
     connectLeader,
     disconnectLeader,
     getPositions,
+    getLastPositions,
   };
 }

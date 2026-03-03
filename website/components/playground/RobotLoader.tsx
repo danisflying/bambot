@@ -302,7 +302,7 @@ export default function RobotLoader({ robotName }: RobotLoaderProps) {
         onHide={hideEpisodeControl}
         leaderControl={{
           isConnected: leaderControl.isConnected,
-          getPositions: leaderControl.getPositions,
+          getLastPositions: leaderControl.getLastPositions,
           disconnectLeader: leaderControl.disconnectLeader,
         }}
         jointStates={jointStates}

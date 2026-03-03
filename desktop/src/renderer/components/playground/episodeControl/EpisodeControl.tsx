@@ -25,7 +25,7 @@ interface EpisodeControlProps {
   onHide: () => void;
   leaderControl: {
     isConnected: boolean;
-    getPositions: () => Promise<Map<number, number>>;
+    getLastPositions: () => Map<number, number>;
     disconnectLeader: () => Promise<void>;
   };
   jointStates: JointState[];
@@ -115,7 +115,7 @@ const EpisodeControl = ({
 
   const recorder = useEpisodeRecorder(
     {
-      getLeaderPositions: leaderControl.getPositions,
+      getLeaderPositions: leaderControl.getLastPositions,
       getFollowerAngles,
       servoIds,
       jointNames,

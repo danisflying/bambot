@@ -66,12 +66,19 @@ const LeaderControl = ({
           const positions = await getPositionsRef.current();
           if (positions.size > 0 && !cancelled) {
             const joints = revoluteJointsRef.current;
-            const leaderAngles = joints.map((j) => ({
-              servoId: j.servoId,
-              angle: servoPositionToAngle(positions.get(j.servoId) ?? 0),
-            }));
-            setAngles(leaderAngles);
-            onSyncRef.current(leaderAngles);
+            // Only include joints that actually returned a valid position.
+            // Falling back to 0 for missing servos would command the follower
+            // to slam to 0 degrees — filter them out instead.
+            const leaderAngles = joints
+              .filter((j) => positions.has(j.servoId))
+              .map((j) => ({
+                servoId: j.servoId,
+                angle: servoPositionToAngle(positions.get(j.servoId)!),
+              }));
+            if (leaderAngles.length > 0) {
+              setAngles(leaderAngles);
+              onSyncRef.current(leaderAngles);
+            }
           }
         } catch (e) {
           console.error("Leader sync error:", e);
