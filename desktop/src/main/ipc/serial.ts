@@ -14,6 +14,12 @@ import type { SerialConnectOptions } from "../../shared/types";
 
 // ── Per-port state ───────────────────────────────────────────────────────────
 
+/** Maximum bytes kept in the main-process read buffer.  The primary consumer is
+ *  the SERIAL_READ IPC handler (dequeue).  The renderer-side ElectronPortHandler
+ *  uses the onData push path instead, so this buffer is only a secondary
+ *  fallback.  Capping it prevents unbounded memory growth. */
+const MAX_BUFFER_BYTES = 65_536;
+
 interface PortState {
   port: SerialPort;
   buffer: number[];
@@ -23,9 +29,14 @@ interface PortState {
 
 const openPorts = new Map<string, PortState>();
 
-/** Push new bytes into a port's buffer and wake any pending read() waiters. */
+/** Push new bytes into a port's buffer and wake any pending read() waiters.
+ *  Trims the oldest bytes when the buffer exceeds MAX_BUFFER_BYTES. */
 function pushBytes(state: PortState, bytes: Buffer | number[]): void {
   for (const b of bytes) state.buffer.push(b);
+  // Prevent unbounded growth — drop oldest bytes when over the cap.
+  if (state.buffer.length > MAX_BUFFER_BYTES) {
+    state.buffer.splice(0, state.buffer.length - MAX_BUFFER_BYTES);
+  }
   const pending = state.waiters.splice(0);
   for (const wake of pending) wake();
 }
@@ -192,5 +203,26 @@ export function registerSerialIPC(): void {
     const pending = state.waiters.splice(0);
     for (const wake of pending) wake();
     console.log(`[serial] flushed RX buffer for ${path}`);
+  });
+
+  // ── Change baud rate on an open port ─────────────────────────────────────
+  //
+  // Re-opens the port at the requested baud rate.  This is needed because the
+  // `serialport` package does not support changing baud rate on the fly.
+  ipcMain.handle(IPC_CHANNELS.SERIAL_SET_BAUD_RATE, async (_event, path: string, baudRate: number) => {
+    const state = openPorts.get(path);
+    if (!state) throw new Error(`Port not open: ${path}`);
+
+    return new Promise<void>((resolve, reject) => {
+      state.port.update({ baudRate }, (err) => {
+        if (err) {
+          console.error(`[serial] setBaudRate error on ${path}:`, err.message);
+          reject(new Error(`setBaudRate failed on ${path}: ${err.message}`));
+        } else {
+          console.log(`[serial] ${path} baud rate changed to ${baudRate}`);
+          resolve();
+        }
+      });
+    });
   });
 }

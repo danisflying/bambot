@@ -81,6 +81,13 @@ export function useRobotControl(
   // Store initial positions of servos
   const [initialPositions, setInitialPositions] = useState<number[]>([]);
 
+  // Keep a ref in sync with jointStates so interval callbacks always read
+  // the latest values instead of a stale closure snapshot.
+  const jointStatesRef = useRef<JointState[]>(jointStates);
+  useEffect(() => {
+    jointStatesRef.current = jointStates;
+  }, [jointStates]);
+
   useEffect(() => {
     setJointStates(
       jointDetails.map((j, index) => ({
@@ -188,16 +195,21 @@ export function useRobotControl(
 
     recordingIntervalRef.current = setInterval(() => {
       const currentFrame: number[] = [];
+      const currentJointStates = jointStatesRef.current;
 
       jointDetails.forEach((joint) => {
-        const jointState = jointStates.find(
+        const jointState = currentJointStates.find(
           (state) => state.servoId === joint.servoId
         );
         if (jointState) {
           if (joint.jointType === "revolute") {
-            currentFrame.push(jointState.degrees ?? 0);
+            currentFrame.push(
+              typeof jointState.degrees === "number" ? jointState.degrees : 0
+            );
           } else if (joint.jointType === "continuous") {
-            currentFrame.push(jointState.speed ?? 0);
+            currentFrame.push(
+              typeof jointState.speed === "number" ? jointState.speed : 0
+            );
           }
         } else {
           currentFrame.push(0);
@@ -206,7 +218,7 @@ export function useRobotControl(
 
       setRecordData((prev) => [...prev, currentFrame]);
     }, RECORDING_INTERVAL);
-  }, [jointDetails, jointStates]);
+  }, [jointDetails]);
 
   const stopRecording = useCallback(() => {
     setIsRecording(false);

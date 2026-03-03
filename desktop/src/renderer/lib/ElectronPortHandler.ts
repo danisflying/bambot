@@ -200,8 +200,12 @@ export class ElectronPortHandler {
 
   setBaudRate(baudrate: number): boolean {
     this.baudrate = baudrate;
-    this.txTimePerByte = (1000.0 / baudrate) * 10.0;
-    return true;
+    this.txTimePerByte = (1000.0 / baudrate) * 10.0;    // Propagate to the physical port via IPC when connected.
+    if (this.isOpen && this.portPath) {
+      window.electron.serial.setBaudRate(this.portPath, baudrate).catch((err) => {
+        console.error("[ElectronPortHandler] setBaudRate IPC error:", err);
+      });
+    }    return true;
   }
 
   getBaudRate(): number {

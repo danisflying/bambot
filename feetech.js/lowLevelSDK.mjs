@@ -372,7 +372,14 @@ export class PacketHandler {
     
     // TX packet
     await port.clearPort();
-    const writtenPacketLength = await port.writePort(txpacket);
+    let writtenPacketLength;
+    try {
+      writtenPacketLength = await port.writePort(txpacket);
+    } catch (err) {
+      console.error('txPacket writePort exception:', err);
+      port.isUsing = false;
+      return COMM_TX_FAIL;
+    }
     if (totalPacketLength !== writtenPacketLength) {
       port.isUsing = false;
       return COMM_TX_FAIL;
@@ -504,10 +511,9 @@ export class PacketHandler {
       }
       
       // RX packet - no retries, just attempt once
-      // console.log(`Receiving packet`);
-      
-      // Clear port before receiving to ensure clean state
-      await port.clearPort();
+      // NOTE: Do NOT clearPort() here. The pre-TX clear in txPacket() already
+      // flushed stale data. Clearing again after TX races with the servo
+      // response and discards valid bytes, causing COMM_RX_TIMEOUT.
       
       const [rxpacketResult, resultRx] = await this.rxPacket(port);
       rxpacket = rxpacketResult;

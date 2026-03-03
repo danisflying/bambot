@@ -12,6 +12,7 @@ export const IPC_CHANNELS = {
   SERIAL_WRITE: "serial:write",
   SERIAL_READ: "serial:read",
   SERIAL_FLUSH_RX: "serial:flush-rx",
+  SERIAL_SET_BAUD_RATE: "serial:set-baud-rate",
   SERIAL_ON_DATA: "serial:on-data",
   SERIAL_ON_ERROR: "serial:on-error",
 

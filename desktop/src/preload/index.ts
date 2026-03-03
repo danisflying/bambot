@@ -11,6 +11,7 @@ const api: ElectronAPI = {
     write: (path, data) => ipcRenderer.invoke(IPC_CHANNELS.SERIAL_WRITE, path, data),
     read: (path, length) => ipcRenderer.invoke(IPC_CHANNELS.SERIAL_READ, path, length),
     flushRx: (path) => ipcRenderer.invoke(IPC_CHANNELS.SERIAL_FLUSH_RX, path),
+    setBaudRate: (path, baudRate) => ipcRenderer.invoke(IPC_CHANNELS.SERIAL_SET_BAUD_RATE, path, baudRate),
     onData: (path, callback) => {
       const handler = (_event: Electron.IpcRendererEvent, payload: { path: string; data: number[] }) => {
         if (payload.path === path) callback(payload.data);

@@ -88,6 +88,7 @@ export interface ElectronAPI {
     write: (path: string, data: number[]) => Promise<void>;
     read: (path: string, length: number) => Promise<number[]>;
     flushRx: (path: string) => Promise<void>;
+    setBaudRate: (path: string, baudRate: number) => Promise<void>;
     /** Subscribe to streaming bytes from a specific port. Returns an unsubscribe fn. */
     onData: (path: string, callback: (data: number[]) => void) => () => void;
     /** Subscribe to error events from a specific port. Returns an unsubscribe fn. */
