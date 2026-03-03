@@ -507,7 +507,7 @@ export class PacketHandler {
       } else {
         // For other instructions, we expect a status packet
         port.setPacketTimeout(10); // HEADER0 HEADER1 ID LENGTH ERROR CHECKSUM + buffer
-        console.log(`Set standard packet timeout for 10 bytes`);
+        // console.log(`Set standard packet timeout for 10 bytes`);
       }
       
       // RX packet - no retries, just attempt once
@@ -750,7 +750,7 @@ export class PacketHandler {
     }
     txpacket[totalLen - 1] = (~checksum) & 0xFF;
 
-    console.log(`SyncReadTx: ${txpacket.map(b => '0x' + b.toString(16).padStart(2,'0')).join(' ')}`);
+    // console.log(`SyncReadTx: ${txpacket.map(b => '0x' + b.toString(16).padStart(2,'0')).join(' ')}`);
 
     // Send packet
     await port.clearPort();

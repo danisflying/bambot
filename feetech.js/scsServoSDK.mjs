@@ -635,8 +635,8 @@ export class ScsServoSDK {
     if (fast && this.portHandler) {
       prevTimeout = this.portHandler.readTimeoutMs;
       prevPoll = this.portHandler.readPollMs;
-      this.portHandler.readTimeoutMs = 80;
-      this.portHandler.readPollMs = 12;
+      this.portHandler.readTimeoutMs = 25;
+      this.portHandler.readPollMs = 4;
     }
 
     const groupSyncRead = new GroupSyncRead(

@@ -23,7 +23,9 @@
 // ── Constants (mirrored from lowLevelSDK.mjs) ────────────────────────────────
 
 const DEFAULT_BAUDRATE = 1_000_000;
-const LATENCY_TIMER = 16;
+// Reduced from 16 → 4: the original 16 ms was sized for Web Serial browser
+// polling overhead.  With native serialport + IPC push, 4 ms is sufficient.
+const LATENCY_TIMER = 4;
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -183,17 +185,13 @@ export class ElectronPortHandler {
    * Mirrors PortHandler.clearPort() in the Web Serial implementation.
    */
   async clearPort(): Promise<void> {
+    // Only clear the local rxBuffer.  The main-process buffer (serial.ts) is
+    // never read by ElectronPortHandler — data arrives via the onData push
+    // channel — so the flushRx IPC round-trip was pure overhead (~5-10 ms per
+    // call, multiplied by every txPacket invocation).
     this.rxBuffer = [];
     const pending = this.rxWaiters.splice(0);
     for (const wake of pending) wake();
-
-    if (this.portPath && this.isOpen) {
-      try {
-        await window.electron.serial.flushRx(this.portPath);
-      } catch (err) {
-        console.warn("[ElectronPortHandler] clearPort/flushRx error:", err);
-      }
-    }
   }
 
   // ── Baud rate ─────────────────────────────────────────────────────────────
@@ -246,7 +244,10 @@ export class ElectronPortHandler {
       if (remaining <= 0) break;
 
       await new Promise<void>((resolve) => {
-        const timer = setTimeout(resolve, Math.min(5, remaining));
+        // 1 ms fallback poll — data normally arrives via rxWaiter wake-up so
+        // the timer rarely fires.  Reduced from 5 ms to avoid stalling the
+        // control loop when the wake-up fires between event-loop ticks.
+        const timer = setTimeout(resolve, Math.min(1, remaining));
         this.rxWaiters.push(() => {
           clearTimeout(timer);
           resolve();

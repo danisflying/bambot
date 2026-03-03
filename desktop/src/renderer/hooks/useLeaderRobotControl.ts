@@ -59,10 +59,12 @@ export function useLeaderRobotControl(servoIds: number[]) {
   }, []);
 
   // Get joint positions (fast mode for low-latency control loops)
+  // Uses syncReadPositionsBatch (single GroupSyncRead transaction) instead of
+  // syncReadPositions (N sequential reads) to minimise IPC round-trips.
   const getPositions = useCallback(async () => {
     if (!isConnected || readableServoIds.length === 0) return new Map();
     try {
-      const pos = await scsServoSDK.syncReadPositions(readableServoIds, { fast: true });
+      const pos = await scsServoSDK.syncReadPositionsBatch(readableServoIds, { fast: true });
       return new Map<number, number>(pos);
     } catch (e) {
       console.error("Error reading positions:", e);
