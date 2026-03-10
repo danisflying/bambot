@@ -36,6 +36,8 @@ interface EpisodeControlProps {
   }[];
   robotName: string;
   robotViewCanvas?: HTMLCanvasElement | null;
+  /** Notify parent when episode recording is active */
+  onBusyChange?: (busy: boolean) => void;
 }
 
 // ── Component ──────────────────────────────────────────────────────────────
@@ -48,6 +50,7 @@ const EpisodeControl = ({
   jointDetails,
   robotName,
   robotViewCanvas = null,
+  onBusyChange,
 }: EpisodeControlProps) => {
   // ── UI state ───────────────────────────────────────────────────────────
 
@@ -125,6 +128,11 @@ const EpisodeControl = ({
   );
 
   const { phase, frameCount, elapsedMs, currentEpisodeId, droppedFrames } = recorder.state;
+
+  // Notify parent when episode recording is active
+  useEffect(() => {
+    onBusyChange?.(phase === "recording" || phase === "paused");
+  }, [phase, onBusyChange]);
 
   // ── Position panel once measured ───────────────────────────────────────
 

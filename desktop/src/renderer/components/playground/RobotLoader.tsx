@@ -24,6 +24,15 @@ import {
 } from "@/lib/panelSettings";
 import { useBambotAPI } from "@/hooks/useBambotAPI";
 
+/** Tracks whether any recording or playback panel is actively running */
+function useKeyboardDisabled() {
+  const [recordBusy, setRecordBusy] = useState(false);
+  const [episodeBusy, setEpisodeBusy] = useState(false);
+  const [playbackBusy, setPlaybackBusy] = useState(false);
+  const disabled = recordBusy || episodeBusy || playbackBusy;
+  return { disabled, setRecordBusy, setEpisodeBusy, setPlaybackBusy } as const;
+}
+
 export type JointDetails = {
   name: string;
   servoId: number;
@@ -68,6 +77,8 @@ export default function RobotLoader({ robotName }: RobotLoaderProps) {
   const [showPlaybackControl, setShowPlaybackControl] = useState(() => {
     return getPanelStateFromLocalStorage("playbackControl", robotName) ?? false;
   });
+  // Track whether keyboard controls should be disabled during recording / playback
+  const { disabled: keyboardDisabled, setRecordBusy, setEpisodeBusy, setPlaybackBusy } = useKeyboardDisabled();
   // Ref to the Three.js renderer canvas for robot_view simulated camera
   const robotCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const config = robotConfigMap[robotName];
@@ -260,6 +271,7 @@ export default function RobotLoader({ robotName }: RobotLoaderProps) {
         disconnectRobot={disconnectRobot}
         keyboardControlMap={keyboardControlMap}
         compoundMovements={compoundMovements}
+        keyboardDisabled={keyboardDisabled}
       />
       <ChatControl
         show={showChatControl}
@@ -292,6 +304,7 @@ export default function RobotLoader({ robotName }: RobotLoaderProps) {
           isConnected: leaderControl.isConnected,
           disconnectLeader: leaderControl.disconnectLeader,
         }}
+        onBusyChange={setRecordBusy}
       />
 
       {/* Episode Recorder overlay */}
@@ -307,6 +320,7 @@ export default function RobotLoader({ robotName }: RobotLoaderProps) {
         jointDetails={jointDetails}
         robotName={robotName}
         robotViewCanvas={robotCanvasRef.current}
+        onBusyChange={setEpisodeBusy}
       />
 
       {/* Episode Playback overlay */}
@@ -315,6 +329,7 @@ export default function RobotLoader({ robotName }: RobotLoaderProps) {
         onHide={hidePlaybackControl}
         updateJointsDegrees={updateJointsDegrees}
         jointDetails={jointDetails}
+        onBusyChange={setPlaybackBusy}
       />
 
       <div className="absolute bottom-5 left-0 right-0">

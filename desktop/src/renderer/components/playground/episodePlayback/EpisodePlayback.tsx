@@ -23,6 +23,8 @@ interface EpisodePlaybackProps {
     servoId: number;
     jointType: "revolute" | "continuous";
   }[];
+  /** Notify parent when playback is active */
+  onBusyChange?: (busy: boolean) => void;
 }
 
 // ── Component ──────────────────────────────────────────────────────────────
@@ -32,6 +34,7 @@ const EpisodePlayback = ({
   onHide,
   updateJointsDegrees,
   jointDetails,
+  onBusyChange,
 }: EpisodePlaybackProps) => {
   const [position, setPosition] = React.useState({ x: 420, y: 70 });
   const [measureRef, bounds] = useMeasure();
@@ -39,6 +42,11 @@ const EpisodePlayback = ({
 
   const playback = useEpisodePlayback();
   const { state } = playback;
+
+  // Notify parent when playback is active
+  useEffect(() => {
+    onBusyChange?.(state.phase === "playing");
+  }, [state.phase, onBusyChange]);
 
   // Auto-fetch episode list when panel opens
   useEffect(() => {

@@ -10,7 +10,9 @@ type ContinuousJointsTableProps = {
   joints: JointState[];
   updateJointSpeed: UpdateJointSpeed;
   updateJointsSpeed: UpdateJointsSpeed; // Add updateJointsSpeed prop
-  maxSpeed: number;
+  maxSpeed?: number;
+  /** When true, keyboard input is suppressed (e.g. during recording/playback) */
+  disabled?: boolean;
 };
 
 const formatSpeed = (speed?: number | "N/A" | "error") => {
@@ -27,11 +29,14 @@ export function ContinuousJointsTable({
   joints,
   updateJointSpeed,
   updateJointsSpeed,
+  disabled = false,
 }: ContinuousJointsTableProps) {
   const maxSpeed = 1000; // Define max speed for the robot
   const [keyState, setKeyState] = useState<string | null>(null); // Track current key state
 
   const handleKeyDown = (event: KeyboardEvent) => {
+    // Ignore keyboard input during recording / playback
+    if (disabled) return;
     switch (event.key) {
       case "ArrowUp":
         setKeyState("forward");

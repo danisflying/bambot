@@ -20,6 +20,8 @@ interface RecordControlProps {
     isConnected: boolean;
     disconnectLeader: () => Promise<void>;
   };
+  /** Notify parent when recording or replaying is active */
+  onBusyChange?: (busy: boolean) => void;
 }
 
 type RecordingState = "idle" | "recording" | "paused" | "stopped" | "replaying";
@@ -36,6 +38,7 @@ const RecordControl = ({
   updateJointsSpeed,
   jointDetails = [],
   leaderControl,
+  onBusyChange,
 }: RecordControlProps) => {
   const [recordingState, setRecordingState] = useState<RecordingState>("idle");
   const [recordingTime, setRecordingTime] = useState(0);
@@ -50,6 +53,11 @@ const RecordControl = ({
       setRecordingState("recording");
     }
   }, [isRecording, recordingState]);
+
+  // Notify parent when busy (recording or replaying)
+  useEffect(() => {
+    onBusyChange?.(recordingState === "recording" || recordingState === "replaying");
+  }, [recordingState, onBusyChange]);
 
   // Timer for recording duration
   useEffect(() => {

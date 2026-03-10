@@ -33,6 +33,8 @@ type ControlPanelProps = {
   compoundMovements?: RobotConfig["compoundMovements"]; // Use type from robotConfig
   onHide?: () => void; // 新增 onHide 属性
   show?: boolean; // 新增 show 属性
+  /** Disable keyboard input during recording / playback */
+  keyboardDisabled?: boolean;
 };
 
 export function ControlPanel({
@@ -48,6 +50,7 @@ export function ControlPanel({
   disconnectRobot,
   keyboardControlMap, // Destructure new prop
   compoundMovements, // Destructure new prop
+  keyboardDisabled = false,
 }: ControlPanelProps) {
   const [connectionStatus, setConnectionStatus] = useState<
     "idle" | "connecting" | "disconnecting"
@@ -132,6 +135,7 @@ export function ControlPanel({
             updateJointsDegrees={updateJointsDegrees}
             keyboardControlMap={keyboardControlMap}
             compoundMovements={compoundMovements}
+            disabled={keyboardDisabled}
           />
         )}
 
@@ -141,6 +145,7 @@ export function ControlPanel({
             joints={continuousJoints}
             updateJointSpeed={updateJointSpeed}
             updateJointsSpeed={updateJointsSpeed} // Pass updateJointsSpeed to ContinuousJointsTable
+            disabled={keyboardDisabled}
           />
         )}
 

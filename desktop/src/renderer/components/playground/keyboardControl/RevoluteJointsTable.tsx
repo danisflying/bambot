@@ -13,6 +13,8 @@ type RevoluteJointsTableProps = {
   updateJointsDegrees: UpdateJointsDegrees;
   keyboardControlMap: RobotConfig["keyboardControlMap"];
   compoundMovements?: RobotConfig["compoundMovements"]; // Use type from robotConfig
+  /** When true, keyboard input is suppressed (e.g. during recording/playback) */
+  disabled?: boolean;
 };
 
 // Define constants for interval and step size
@@ -38,17 +40,27 @@ export function RevoluteJointsTable({
   updateJointsDegrees,
   keyboardControlMap,
   compoundMovements,
+  disabled = false,
 }: RevoluteJointsTableProps) {
   const [pressedKeys, setPressedKeys] = useState<Set<string>>(new Set());
   // Refs to hold the latest values needed inside the interval callback
   const jointsRef = useRef(joints);
   const updateJointsDegreesRef = useRef(updateJointsDegrees);
   const keyboardControlMapRef = useRef(keyboardControlMap);
+  const disabledRef = useRef(disabled);
 
   // Update refs whenever the props change
   useEffect(() => {
     jointsRef.current = joints;
   }, [joints]);
+
+  useEffect(() => {
+    disabledRef.current = disabled;
+    // Clear any pressed keys when keyboard becomes disabled
+    if (disabled) {
+      setPressedKeys(new Set());
+    }
+  }, [disabled]);
 
   useEffect(() => {
     updateJointsDegreesRef.current = updateJointsDegrees;
@@ -61,6 +73,8 @@ export function RevoluteJointsTable({
   // Effect for keyboard listeners
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
+      // Ignore keyboard input during recording / playback
+      if (disabledRef.current) return;
       // Check if the pressed key is actually used for control to potentially prevent default
       // Note: Using the ref here ensures we check against the *latest* map
       const isControlKey = Object.values(keyboardControlMapRef.current || {})
@@ -267,9 +281,8 @@ export function RevoluteJointsTable({
 
   // Mouse handlers update the `pressedKeys` state, which triggers the interval effect
   const handleMouseDown = (key: string | undefined) => {
-    if (key) {
-      setPressedKeys((prevKeys) => new Set(prevKeys).add(key));
-    }
+    if (disabled || !key) return;
+    setPressedKeys((prevKeys) => new Set(prevKeys).add(key));
   };
 
   const handleMouseUp = (key: string | undefined) => {
