@@ -124,7 +124,7 @@ const EpisodeControl = ({
     recorderConfig
   );
 
-  const { phase, frameCount, elapsedMs, currentEpisodeId } = recorder.state;
+  const { phase, frameCount, elapsedMs, currentEpisodeId, droppedFrames } = recorder.state;
 
   // ── Position panel once measured ───────────────────────────────────────
 
@@ -243,6 +243,7 @@ const EpisodeControl = ({
           elapsedMs={elapsedMs}
           currentEpisodeId={currentEpisodeId}
           cameraCount={cameras.cameraCount}
+          droppedFrames={droppedFrames}
           reviewFrameCount={reviewFrameCount}
           reviewElapsedMs={reviewElapsedMs}
           onStart={handleStart}

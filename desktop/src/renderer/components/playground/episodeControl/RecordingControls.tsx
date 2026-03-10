@@ -7,6 +7,8 @@ interface RecordingControlsProps {
   elapsedMs: number;
   currentEpisodeId: number;
   cameraCount: number;
+  /** Number of frame captures skipped due to busy guard */
+  droppedFrames: number;
   /** Displayed frame/time from the last episode when in reviewing phase */
   reviewFrameCount?: number;
   reviewElapsedMs?: number;
@@ -30,6 +32,7 @@ export default function RecordingControls({
   elapsedMs,
   currentEpisodeId,
   cameraCount,
+  droppedFrames,
   reviewFrameCount,
   reviewElapsedMs,
   onStart,
@@ -64,6 +67,12 @@ export default function RecordingControls({
           <span className="opacity-70">Cams:</span>
           <span className="font-mono">{cameraCount}</span>
         </div>
+        {droppedFrames > 0 && (
+          <div className="flex items-center gap-1">
+            <span className="text-yellow-400 opacity-90">Dropped:</span>
+            <span className="font-mono text-yellow-400">{droppedFrames}</span>
+          </div>
+        )}
       </div>
 
       {/* ── Recording indicator ─────────────────────────────────────── */}

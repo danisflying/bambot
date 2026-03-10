@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import {
   Episode,
   EpisodeFrame,
@@ -32,6 +32,8 @@ export type EpisodeRecorderState = {
   frameCount: number;
   elapsedMs: number;
   currentEpisodeId: number;
+  /** Number of frame captures skipped because the previous capture was still busy */
+  droppedFrames: number;
 };
 
 /**
@@ -54,6 +56,7 @@ export function useEpisodeRecorder(
     frameCount: 0,
     elapsedMs: 0,
     currentEpisodeId: 0,
+    droppedFrames: 0,
   });
 
   // The last completed episode — held in state so the UI re-renders automatically.
@@ -70,6 +73,7 @@ export function useEpisodeRecorder(
   const startTimeRef = useRef<number>(0);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const busyRef = useRef(false); // async-overlap guard
+  const droppedRef = useRef(0); // frame-drop counter
   const episodeIdRef = useRef(0); // avoids stale closure on state.currentEpisodeId
   const configRef = useRef(config);
   const depsRef = useRef(deps);
@@ -85,7 +89,11 @@ export function useEpisodeRecorder(
 
   const captureFrame = useCallback(async () => {
     // Skip if previous capture is still in-flight
-    if (busyRef.current) return;
+    if (busyRef.current) {
+      droppedRef.current += 1;
+      setState((prev) => ({ ...prev, droppedFrames: droppedRef.current }));
+      return;
+    }
     busyRef.current = true;
 
     try {
@@ -160,10 +168,20 @@ export function useEpisodeRecorder(
 
   // ── Public API ──────────────────────────────────────────────────────────
 
+  // ── Cleanup on unmount ──────────────────────────────────────────────────
+  // If the component unmounts while recording, clear the capture interval
+  // so it doesn't keep running (and leaking memory) in the background.
+  useEffect(() => {
+    return () => {
+      clearCaptureInterval();
+    };
+  }, [clearCaptureInterval]);
+
   /** Start recording a new episode (idle → recording). */
   const startRecording = useCallback(() => {
     framesRef.current = [];
     busyRef.current = false;
+    droppedRef.current = 0;
     startTimeRef.current = performance.now();
     startCaptureInterval();
     setLastEpisode(null);
@@ -172,6 +190,7 @@ export function useEpisodeRecorder(
       phase: "recording",
       frameCount: 0,
       elapsedMs: 0,
+      droppedFrames: 0,
     }));
   }, [startCaptureInterval]);
 
@@ -233,11 +252,13 @@ export function useEpisodeRecorder(
     clearCaptureInterval();
     framesRef.current = [];
     busyRef.current = false;
+    droppedRef.current = 0;
     setState((prev) => ({
       ...prev,
       phase: "idle",
       frameCount: 0,
       elapsedMs: 0,
+      droppedFrames: 0,
     }));
   }, [clearCaptureInterval]);
 
@@ -262,16 +283,15 @@ export function useEpisodeRecorder(
 
   // ── Save / Download ─────────────────────────────────────────────────────
 
-  /** Save an episode to the server. */
+  /** Save an episode to disk via Electron IPC. */
   const saveEpisode = useCallback(
     async (episode: Episode): Promise<boolean> => {
       try {
-        const res = await fetch("/api/episodes", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(episode),
-        });
-        return res.ok;
+        const result = await window.electron.fs.writeEpisode(episode);
+        if (!result.success) {
+          console.error("Failed to save episode:", result.error);
+        }
+        return result.success;
       } catch (err) {
         console.error("Failed to save episode:", err);
         return false;

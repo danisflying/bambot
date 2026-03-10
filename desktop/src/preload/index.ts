@@ -33,7 +33,7 @@ const api: ElectronAPI = {
     readEpisodes: () => ipcRenderer.invoke(IPC_CHANNELS.FS_READ_EPISODES),
     readEpisodeDetail: (task, episodeId) =>
       ipcRenderer.invoke(IPC_CHANNELS.FS_READ_EPISODE_DETAIL, task, episodeId),
-    writeEpisode: (meta, data) => ipcRenderer.invoke(IPC_CHANNELS.FS_WRITE_EPISODE, meta, data),
+    writeEpisode: (episode) => ipcRenderer.invoke(IPC_CHANNELS.FS_WRITE_EPISODE, episode),
     deleteEpisode: (robotName, index) =>
       ipcRenderer.invoke(IPC_CHANNELS.FS_DELETE_EPISODE, robotName, index),
     readFile: (filePath) => ipcRenderer.invoke(IPC_CHANNELS.FS_READ_FILE, filePath),

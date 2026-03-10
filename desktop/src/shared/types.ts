@@ -33,6 +33,36 @@ export interface DirEntry {
   isDirectory: boolean;
 }
 
+/** Payload sent from renderer → main to persist an episode to disk.
+ *  Images are base64 JPEG (with or without the data-URI prefix). */
+export interface EpisodeWritePayload {
+  task: string;
+  episode_id: number;
+  robot: string;
+  fps: number;
+  success: boolean;
+  notes?: string;
+  joint_names: string[];
+  camera_names: string[];
+  created_at: string;
+  frames: {
+    timestamp_ms: number;
+    observation: {
+      qpos: number[];
+      /** base64 JPEG strings keyed by camera name */
+      images: Record<string, string>;
+    };
+    action: number[];
+  }[];
+}
+
+export interface EpisodeWriteResult {
+  success: boolean;
+  /** Absolute path to the episode directory on disk */
+  path: string;
+  error?: string;
+}
+
 /** Summary metadata for a saved episode (matches episode.json on disk). */
 export interface EpisodeSummary {
   task: string;
@@ -97,7 +127,7 @@ export interface ElectronAPI {
   fs: {
     readEpisodes: () => Promise<EpisodeSummary[]>;
     readEpisodeDetail: (task: string, episodeId: number) => Promise<StoredEpisodeDetail>;
-    writeEpisode: (meta: EpisodeMeta, data: ArrayBuffer) => Promise<void>;
+    writeEpisode: (episode: EpisodeWritePayload) => Promise<EpisodeWriteResult>;
     deleteEpisode: (robotName: string, index: number) => Promise<void>;
     readFile: (filePath: string) => Promise<Uint8Array>;
     writeFile: (filePath: string, data: Uint8Array) => Promise<void>;
