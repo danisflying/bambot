@@ -38,6 +38,8 @@ interface EpisodeControlProps {
   robotViewCanvas?: HTMLCanvasElement | null;
   /** Notify parent when episode recording is active */
   onBusyChange?: (busy: boolean) => void;
+  /** Render inline in sidebar instead of floating Rnd panel */
+  mode?: "floating" | "sidebar";
 }
 
 // ── Component ──────────────────────────────────────────────────────────────
@@ -51,6 +53,7 @@ const EpisodeControl = ({
   robotName,
   robotViewCanvas = null,
   onBusyChange,
+  mode = "floating",
 }: EpisodeControlProps) => {
   // ── UI state ───────────────────────────────────────────────────────────
 
@@ -173,6 +176,99 @@ const EpisodeControl = ({
 
   const isActive = phase === "recording" || phase === "paused";
 
+  const panelContent = (
+    <>
+      {/* Cameras */}
+      <CameraManager
+        cameraStates={cameras.cameraStates}
+        cameraCount={cameras.cameraCount}
+        allActive={cameras.allActive}
+        anyActive={cameras.anyActive}
+        availableDevices={cameras.availableDevices}
+        locked={isActive}
+        addCamera={cameras.addCamera}
+        removeCamera={cameras.removeCamera}
+        startCamera={cameras.startCamera}
+        stopCamera={cameras.stopCamera}
+        startSimulatedCamera={cameras.startSimulatedCamera}
+        getVideoElement={cameras.getVideoElement}
+        robotViewCanvas={robotViewCanvas}
+      />
+
+      {/* Config */}
+      <div className="mb-3 space-y-2">
+        <div className="flex items-center gap-2">
+          <label className="text-xs w-12 shrink-0">Task</label>
+          <input
+            type="text"
+            value={taskName}
+            onChange={(e) => setTaskName(e.target.value)}
+            disabled={isActive}
+            className="flex-1 bg-zinc-800 border border-zinc-600 rounded px-2 py-1 text-xs text-white"
+            placeholder="e.g. pick_cup"
+          />
+        </div>
+        <div className="flex items-center gap-2">
+          <label className="text-xs w-12 shrink-0">FPS</label>
+          <input
+            type="number"
+            value={fps}
+            onChange={(e) => setFps(Math.max(1, Math.min(60, Number(e.target.value))))}
+            disabled={isActive}
+            className="w-16 bg-zinc-800 border border-zinc-600 rounded px-2 py-1 text-xs text-white"
+            min={1}
+            max={60}
+          />
+          <span className="text-xs text-zinc-400">Hz</span>
+        </div>
+      </div>
+
+      {/* Recording controls & status */}
+      <RecordingControls
+        phase={phase}
+        frameCount={frameCount}
+        elapsedMs={elapsedMs}
+        currentEpisodeId={currentEpisodeId}
+        cameraCount={cameras.cameraCount}
+        droppedFrames={droppedFrames}
+        reviewFrameCount={reviewFrameCount}
+        reviewElapsedMs={reviewElapsedMs}
+        onStart={handleStart}
+        onPause={recorder.pauseRecording}
+        onResume={recorder.resumeRecording}
+        onStop={recorder.stopRecording}
+        onDiscard={recorder.discardRecording}
+      />
+
+      {/* Post-recording review */}
+      {phase === "reviewing" && recorder.lastEpisode && (
+        <EpisodeReview
+          episode={recorder.lastEpisode}
+          onSave={recorder.saveEpisode}
+          onDownload={recorder.downloadEpisode}
+          onAccept={recorder.acceptEpisode}
+          onDiscard={recorder.discardReviewedEpisode}
+        />
+      )}
+
+      {/* Session history */}
+      <SessionSummary
+        episodes={recorder.completedEpisodes}
+        onClear={recorder.clearCompletedEpisodes}
+      />
+    </>
+  );
+
+  // ── Sidebar mode ──
+  if (mode === "sidebar") {
+    return (
+      <div className="p-3 text-sm text-white overflow-y-auto h-full">
+        {panelContent}
+      </div>
+    );
+  }
+
+  // ── Floating mode (original) ──
   return (
     <Rnd
       position={position}
@@ -186,7 +282,6 @@ const EpisodeControl = ({
         ref={measureRef}
         className={"max-h-[90vh] overflow-y-auto text-sm w-[380px] " + panelStyle}
       >
-        {/* Header */}
         <h3 className="mt-0 mb-3 border-b border-white/50 pb-1 font-bold text-base flex justify-between items-center">
           <span>Episode Recorder</span>
           <button
@@ -198,85 +293,7 @@ const EpisodeControl = ({
             ×
           </button>
         </h3>
-
-        {/* Cameras */}
-        <CameraManager
-          cameraStates={cameras.cameraStates}
-          cameraCount={cameras.cameraCount}
-          allActive={cameras.allActive}
-          anyActive={cameras.anyActive}
-          availableDevices={cameras.availableDevices}
-          locked={isActive}
-          addCamera={cameras.addCamera}
-          removeCamera={cameras.removeCamera}
-          startCamera={cameras.startCamera}
-          stopCamera={cameras.stopCamera}
-          startSimulatedCamera={cameras.startSimulatedCamera}
-          getVideoElement={cameras.getVideoElement}
-          robotViewCanvas={robotViewCanvas}
-        />
-
-        {/* Config */}
-        <div className="mb-3 space-y-2">
-          <div className="flex items-center gap-2">
-            <label className="text-xs w-12 shrink-0">Task</label>
-            <input
-              type="text"
-              value={taskName}
-              onChange={(e) => setTaskName(e.target.value)}
-              disabled={isActive}
-              className="flex-1 bg-zinc-800 border border-zinc-600 rounded px-2 py-1 text-xs text-white"
-              placeholder="e.g. pick_cup"
-            />
-          </div>
-          <div className="flex items-center gap-2">
-            <label className="text-xs w-12 shrink-0">FPS</label>
-            <input
-              type="number"
-              value={fps}
-              onChange={(e) => setFps(Math.max(1, Math.min(60, Number(e.target.value))))}
-              disabled={isActive}
-              className="w-16 bg-zinc-800 border border-zinc-600 rounded px-2 py-1 text-xs text-white"
-              min={1}
-              max={60}
-            />
-            <span className="text-xs text-zinc-400">Hz</span>
-          </div>
-        </div>
-
-        {/* Recording controls & status */}
-        <RecordingControls
-          phase={phase}
-          frameCount={frameCount}
-          elapsedMs={elapsedMs}
-          currentEpisodeId={currentEpisodeId}
-          cameraCount={cameras.cameraCount}
-          droppedFrames={droppedFrames}
-          reviewFrameCount={reviewFrameCount}
-          reviewElapsedMs={reviewElapsedMs}
-          onStart={handleStart}
-          onPause={recorder.pauseRecording}
-          onResume={recorder.resumeRecording}
-          onStop={recorder.stopRecording}
-          onDiscard={recorder.discardRecording}
-        />
-
-        {/* Post-recording review */}
-        {phase === "reviewing" && recorder.lastEpisode && (
-          <EpisodeReview
-            episode={recorder.lastEpisode}
-            onSave={recorder.saveEpisode}
-            onDownload={recorder.downloadEpisode}
-            onAccept={recorder.acceptEpisode}
-            onDiscard={recorder.discardReviewedEpisode}
-          />
-        )}
-
-        {/* Session history */}
-        <SessionSummary
-          episodes={recorder.completedEpisodes}
-          onClear={recorder.clearCompletedEpisodes}
-        />
+        {panelContent}
       </div>
     </Rnd>
   );

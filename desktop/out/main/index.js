@@ -12,6 +12,7 @@ const IPC_CHANNELS = {
   SERIAL_WRITE: "serial:write",
   SERIAL_READ: "serial:read",
   SERIAL_FLUSH_RX: "serial:flush-rx",
+  SERIAL_SET_BAUD_RATE: "serial:set-baud-rate",
   SERIAL_ON_DATA: "serial:on-data",
   SERIAL_ON_ERROR: "serial:on-error",
   // ── Filesystem ────────────────────────────────────────────
@@ -27,9 +28,13 @@ const IPC_CHANNELS = {
   PYTHON_SPAWN: "python:spawn",
   PYTHON_KILL: "python:kill"
 };
+const MAX_BUFFER_BYTES = 65536;
 const openPorts = /* @__PURE__ */ new Map();
 function pushBytes(state, bytes) {
   for (const b of bytes) state.buffer.push(b);
+  if (state.buffer.length > MAX_BUFFER_BYTES) {
+    state.buffer.splice(0, state.buffer.length - MAX_BUFFER_BYTES);
+  }
   const pending = state.waiters.splice(0);
   for (const wake of pending) wake();
 }
@@ -155,6 +160,21 @@ function registerSerialIPC() {
     for (const wake of pending) wake();
     console.log(`[serial] flushed RX buffer for ${path2}`);
   });
+  electron.ipcMain.handle(IPC_CHANNELS.SERIAL_SET_BAUD_RATE, async (_event, path2, baudRate) => {
+    const state = openPorts.get(path2);
+    if (!state) throw new Error(`Port not open: ${path2}`);
+    return new Promise((resolve, reject) => {
+      state.port.update({ baudRate }, (err) => {
+        if (err) {
+          console.error(`[serial] setBaudRate error on ${path2}:`, err.message);
+          reject(new Error(`setBaudRate failed on ${path2}: ${err.message}`));
+        } else {
+          console.log(`[serial] ${path2} baud rate changed to ${baudRate}`);
+          resolve();
+        }
+      });
+    });
+  });
 }
 function getEpisodesDir() {
   return path.join(electron.app.getAppPath(), "..", "data", "episodes");
@@ -209,10 +229,59 @@ function registerFilesystemIPC() {
     const entries = await promises.readdir(dirPath, { withFileTypes: true });
     return entries.map((e) => ({ name: e.name, isDirectory: e.isDirectory() }));
   });
-  electron.ipcMain.handle(IPC_CHANNELS.FS_WRITE_EPISODE, async (_event, meta) => {
-    console.log("[fs] writeEpisode stub called", meta);
-    throw new Error("Filesystem episode write not implemented yet.");
-  });
+  electron.ipcMain.handle(
+    IPC_CHANNELS.FS_WRITE_EPISODE,
+    async (_event, episode) => {
+      const epDir = path.join(getEpisodesDir(), episode.task, `ep_${episode.episode_id}`);
+      const imagesDir = path.join(epDir, "images");
+      try {
+        await promises.mkdir(imagesDir, { recursive: true });
+        const storedFrames = [];
+        const imageWrites = [];
+        for (let i = 0; i < episode.frames.length; i++) {
+          const frame = episode.frames[i];
+          const storedImages = {};
+          const padded = String(i).padStart(6, "0");
+          for (const [camName, base64Data] of Object.entries(frame.observation.images)) {
+            const filename = `frame_${padded}_${camName}.jpg`;
+            storedImages[camName] = `images/${filename}`;
+            const raw = base64Data.includes(",") ? base64Data.split(",")[1] : base64Data;
+            imageWrites.push(promises.writeFile(path.join(imagesDir, filename), Buffer.from(raw, "base64")));
+          }
+          storedFrames.push({
+            timestamp_ms: frame.timestamp_ms,
+            observation: { qpos: frame.observation.qpos, images: storedImages },
+            action: frame.action
+          });
+        }
+        await Promise.all(imageWrites);
+        await promises.writeFile(path.join(epDir, "frames.json"), JSON.stringify(storedFrames), "utf-8");
+        const lastFrame = episode.frames[episode.frames.length - 1];
+        const summary = {
+          task: episode.task,
+          episode_id: episode.episode_id,
+          robot: episode.robot,
+          fps: episode.fps,
+          success: episode.success,
+          notes: episode.notes,
+          joint_names: episode.joint_names,
+          frame_count: episode.frames.length,
+          duration_s: lastFrame ? lastFrame.timestamp_ms / 1e3 : 0,
+          camera_names: episode.camera_names,
+          created_at: episode.created_at
+        };
+        await promises.writeFile(path.join(epDir, "episode.json"), JSON.stringify(summary, null, 2), "utf-8");
+        console.log(
+          `[fs] Saved episode: ${episode.task}/ep_${episode.episode_id} — ${episode.frames.length} frames, ${imageWrites.length} images`
+        );
+        return { success: true, path: epDir };
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        console.error(`[fs] writeEpisode error:`, err);
+        return { success: false, path: epDir, error: message };
+      }
+    }
+  );
   electron.ipcMain.handle(IPC_CHANNELS.FS_DELETE_EPISODE, async (_event, robotName, index) => {
     console.log("[fs] deleteEpisode stub called", robotName, index);
     throw new Error("Filesystem episode delete not implemented yet.");

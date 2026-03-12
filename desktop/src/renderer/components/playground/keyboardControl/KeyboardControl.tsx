@@ -19,22 +19,22 @@ import { PortSelector } from "../controlButtons/PortSelector";
 
 // --- Control Panel Component ---
 type ControlPanelProps = {
-  jointStates: JointState[]; // Use JointState type from useRobotControl
-  updateJointDegrees: UpdateJointDegrees; // Updated type
-  updateJointsDegrees: UpdateJointsDegrees; // Updated type
-  updateJointSpeed: UpdateJointSpeed; // Updated type
-  updateJointsSpeed: UpdateJointsSpeed; // Add updateJointsSpeed
-
+  jointStates: JointState[];
+  updateJointDegrees: UpdateJointDegrees;
+  updateJointsDegrees: UpdateJointsDegrees;
+  updateJointSpeed: UpdateJointSpeed;
+  updateJointsSpeed: UpdateJointsSpeed;
   isConnected: boolean;
-
   connectRobot: (portPath?: string) => void | Promise<void>;
   disconnectRobot: () => void | Promise<void>;
-  keyboardControlMap: RobotConfig["keyboardControlMap"]; // New prop for keyboard control
-  compoundMovements?: RobotConfig["compoundMovements"]; // Use type from robotConfig
-  onHide?: () => void; // 新增 onHide 属性
-  show?: boolean; // 新增 show 属性
+  keyboardControlMap: RobotConfig["keyboardControlMap"];
+  compoundMovements?: RobotConfig["compoundMovements"];
+  onHide?: () => void;
+  show?: boolean;
   /** Disable keyboard input during recording / playback */
   keyboardDisabled?: boolean;
+  /** Render inline in sidebar instead of floating Rnd panel */
+  mode?: "floating" | "sidebar";
 };
 
 export function ControlPanel({
@@ -44,13 +44,14 @@ export function ControlPanel({
   updateJointDegrees,
   updateJointsDegrees,
   updateJointSpeed,
-  updateJointsSpeed, // Pass updateJointsSpeed
+  updateJointsSpeed,
   isConnected,
   connectRobot,
   disconnectRobot,
-  keyboardControlMap, // Destructure new prop
-  compoundMovements, // Destructure new prop
+  keyboardControlMap,
+  compoundMovements,
   keyboardDisabled = false,
+  mode = "floating",
 }: ControlPanelProps) {
   const [connectionStatus, setConnectionStatus] = useState<
     "idle" | "connecting" | "disconnecting"
@@ -99,6 +100,76 @@ export function ControlPanel({
     (state) => state.jointType === "continuous"
   );
 
+  const panelContent = (
+    <>
+      {revoluteJoints.length > 0 && (
+        <RevoluteJointsTable
+          joints={revoluteJoints}
+          updateJointDegrees={updateJointDegrees}
+          updateJointsDegrees={updateJointsDegrees}
+          keyboardControlMap={keyboardControlMap}
+          compoundMovements={compoundMovements}
+          disabled={keyboardDisabled}
+        />
+      )}
+
+      {continuousJoints.length > 0 && (
+        <ContinuousJointsTable
+          joints={continuousJoints}
+          updateJointSpeed={updateJointSpeed}
+          updateJointsSpeed={updateJointsSpeed}
+          disabled={keyboardDisabled}
+        />
+      )}
+
+      <div className="mt-4 flex flex-col gap-2">
+        {isElectron && !isConnected && (
+          <PortSelector
+            label="Follower Robot Port"
+            value={selectedPort}
+            onChange={setSelectedPort}
+            disabled={connectionStatus !== "idle"}
+          />
+        )}
+        <div className="flex justify-between items-center gap-2">
+          <button
+            onClick={isConnected ? handleDisconnect : handleConnect}
+            disabled={connectionStatus !== "idle" || (isElectron && !isConnected && !selectedPort)}
+            className={`text-white text-sm px-3 py-1.5 rounded flex-1 ${
+              isConnected
+                ? "bg-red-600 hover:bg-red-500"
+                : "bg-blue-600 hover:bg-blue-500"
+            } ${
+              connectionStatus !== "idle" || (isElectron && !isConnected && !selectedPort)
+                ? "opacity-50 cursor-not-allowed"
+                : ""
+            }`}
+          >
+            {connectionStatus === "connecting"
+              ? "Connecting..."
+              : connectionStatus === "disconnecting"
+              ? "Disconnecting..."
+              : isConnected
+              ? "Disconnect Robot"
+              : "Connect Follower Robot"}
+          </button>
+          <RobotConnectionHelpDialog />
+        </div>
+      </div>
+    </>
+  );
+
+  // ── Sidebar mode: render inline without Rnd wrapper ──
+  if (mode === "sidebar") {
+    if (!show) return null;
+    return (
+      <div className="p-3 text-sm text-white overflow-y-auto h-full">
+        {panelContent}
+      </div>
+    );
+  }
+
+  // ── Floating mode (original) ──
   return (
     <Rnd
       position={position}
@@ -115,10 +186,10 @@ export function ControlPanel({
         ref={ref}
         className={"max-h-[80vh] overflow-y-auto text-sm " + panelStyle}
       >
-        <h3 className="mt-0 mb-4 border-b border-white/50  pb-1 font-bold text-base flex justify-between items-center">
+        <h3 className="mt-0 mb-4 border-b border-white/50 pb-1 font-bold text-base flex justify-between items-center">
           <span>Joint Controls</span>
           <button
-            onClick={onHide} // 优先调用 onHide
+            onClick={onHide}
             onTouchEnd={onHide}
             className="ml-2 text-xl hover:bg-zinc-800 px-2 rounded-full"
             title="Collapse"
@@ -126,65 +197,7 @@ export function ControlPanel({
             ×
           </button>
         </h3>
-
-        {/* Revolute Joints Table */}
-        {revoluteJoints.length > 0 && (
-          <RevoluteJointsTable
-            joints={revoluteJoints}
-            updateJointDegrees={updateJointDegrees}
-            updateJointsDegrees={updateJointsDegrees}
-            keyboardControlMap={keyboardControlMap}
-            compoundMovements={compoundMovements}
-            disabled={keyboardDisabled}
-          />
-        )}
-
-        {/* Continuous Joints Table */}
-        {continuousJoints.length > 0 && (
-          <ContinuousJointsTable
-            joints={continuousJoints}
-            updateJointSpeed={updateJointSpeed}
-            updateJointsSpeed={updateJointsSpeed} // Pass updateJointsSpeed to ContinuousJointsTable
-            disabled={keyboardDisabled}
-          />
-        )}
-
-        {/* Connection Controls */}
-        <div className="mt-4 flex flex-col gap-2">
-          {/* Port selector — only visible in Electron */}
-          {isElectron && !isConnected && (
-            <PortSelector
-              label="Follower Robot Port"
-              value={selectedPort}
-              onChange={setSelectedPort}
-              disabled={connectionStatus !== "idle"}
-            />
-          )}
-          <div className="flex justify-between items-center gap-2">
-            <button
-              onClick={isConnected ? handleDisconnect : handleConnect}
-              disabled={connectionStatus !== "idle" || (isElectron && !isConnected && !selectedPort)}
-              className={`text-white text-sm px-3 py-1.5 rounded flex-1 ${
-                isConnected
-                  ? "bg-red-600 hover:bg-red-500"
-                  : "bg-blue-600 hover:bg-blue-500"
-              } ${
-                connectionStatus !== "idle" || (isElectron && !isConnected && !selectedPort)
-                  ? "opacity-50 cursor-not-allowed"
-                  : ""
-              }`}
-            >
-              {connectionStatus === "connecting"
-                ? "Connecting..."
-                : connectionStatus === "disconnecting"
-                ? "Disconnecting..."
-                : isConnected
-                ? "Disconnect Robot"
-                : "Connect Follower Robot"}
-            </button>
-            <RobotConnectionHelpDialog />
-          </div>
-        </div>
+        {panelContent}
       </div>
     </Rnd>
   );

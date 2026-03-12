@@ -26,24 +26,24 @@
 }
 
 .dark {
-  --background: 222.2 84% 4.9%;
-  --foreground: 210 40% 98%;
-  --card: 222.2 84% 4.9%;
-  --card-foreground: 210 40% 98%;
-  --popover: 222.2 84% 4.9%;
-  --popover-foreground: 210 40% 98%;
+  --background: 240 10% 3.9%;
+  --foreground: 0 0% 95%;
+  --card: 240 10% 3.9%;
+  --card-foreground: 0 0% 95%;
+  --popover: 240 10% 5%;
+  --popover-foreground: 0 0% 95%;
   --primary: 142.1 70.6% 45.3%;
   --primary-foreground: 222.2 47.4% 11.2%;
-  --secondary: 217.2 32.6% 17.5%;
-  --secondary-foreground: 210 40% 98%;
-  --muted: 217.2 32.6% 17.5%;
-  --muted-foreground: 215 20.2% 65.1%;
-  --accent: 217.2 32.6% 17.5%;
-  --accent-foreground: 210 40% 98%;
+  --secondary: 240 4% 16%;
+  --secondary-foreground: 0 0% 95%;
+  --muted: 240 4% 16%;
+  --muted-foreground: 240 5% 65%;
+  --accent: 240 4% 16%;
+  --accent-foreground: 0 0% 95%;
   --destructive: 0 62.8% 30.6%;
-  --destructive-foreground: 210 40% 98%;
-  --border: 217.2 32.6% 17.5%;
-  --input: 217.2 32.6% 17.5%;
+  --destructive-foreground: 0 0% 95%;
+  --border: 240 4% 16%;
+  --input: 240 4% 16%;
   --ring: 142.1 76.2% 36.3%;
 }
 
@@ -53,4 +53,27 @@
 
 body {
   @apply bg-background text-foreground;
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Minimal scrollbar for sidebar panels */
+.overflow-y-auto::-webkit-scrollbar {
+  width: 4px;
+}
+.overflow-y-auto::-webkit-scrollbar-track {
+  background: transparent;
+}
+.overflow-y-auto::-webkit-scrollbar-thumb {
+  background: hsl(240 4% 25%);
+  border-radius: 2px;
+}
+.overflow-y-auto::-webkit-scrollbar-thumb:hover {
+  background: hsl(240 4% 35%);
+}
+
+/* Smooth resizable panel handles */
+[data-panel-group-direction="horizontal"] > [data-resize-handle-active] {
+  background: hsl(var(--primary) / 0.3);
 }

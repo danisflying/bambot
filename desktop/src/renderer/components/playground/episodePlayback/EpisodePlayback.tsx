@@ -15,6 +15,7 @@ import PlaybackImageViewer from "./PlaybackImageViewer";
 interface EpisodePlaybackProps {
   show: boolean;
   onHide: () => void;
+  mode?: "floating" | "sidebar";
   /** Push action angles to the 3D model / real robot */
   updateJointsDegrees: UpdateJointsDegrees;
   /** Joint details for mapping action → servo updates */
@@ -35,6 +36,7 @@ const EpisodePlayback = ({
   updateJointsDegrees,
   jointDetails,
   onBusyChange,
+  mode = "floating",
 }: EpisodePlaybackProps) => {
   const [position, setPosition] = React.useState({ x: 420, y: 70 });
   const [measureRef, bounds] = useMeasure();
@@ -89,6 +91,103 @@ const EpisodePlayback = ({
 
   const isLoaded = state.phase !== "idle" && state.phase !== "loading";
 
+  const panelContent = (
+    <>
+      {/* Episode browser */}
+      <EpisodeBrowser
+        episodes={playback.episodeList}
+        loading={playback.listLoading}
+        selectedEpisode={state.episode}
+        onSelect={handleSelectEpisode}
+        onRefresh={playback.fetchEpisodeList}
+      />
+
+      {/* Loading indicator with prefetch progress */}
+      {state.phase === "loading" && (
+        <div className="my-2">
+          <div className="text-xs text-zinc-400 animate-pulse mb-1">
+            Loading episode{state.prefetchProgress > 0 ? " — prefetching images..." : "..."}
+          </div>
+          {state.prefetchProgress > 0 && (
+            <div className="w-full bg-zinc-700 rounded-full h-1.5">
+              <div
+                className="bg-blue-500 h-1.5 rounded-full transition-all duration-150"
+                style={{ width: `${Math.round(state.prefetchProgress * 100)}%` }}
+              />
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Error */}
+      {state.error && (
+        <div className="text-xs text-red-400 my-2">{state.error}</div>
+      )}
+
+      {/* Playback controls */}
+      {isLoaded && (
+        <>
+          <PlaybackControls
+            phase={state.phase}
+            frameIndex={state.frameIndex}
+            totalFrames={state.totalFrames}
+            speed={state.speed}
+            fps={state.episode?.fps ?? 30}
+            onPlay={playback.play}
+            onPause={playback.pause}
+            onStop={playback.stop}
+            onSeek={playback.seekTo}
+            onStepForward={playback.stepForward}
+            onStepBackward={playback.stepBackward}
+            onSpeedChange={playback.setPlaybackSpeed}
+            onUnload={playback.unload}
+          />
+
+          {/* Drive robot toggle */}
+          <div className="flex items-center gap-2 mb-2">
+            <label className="text-xs flex items-center gap-1.5 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={driveRobot}
+                onChange={(e) => setDriveRobot(e.target.checked)}
+                className="accent-blue-500"
+              />
+              Drive 3D model
+            </label>
+          </div>
+
+          {/* Camera image viewer */}
+          <PlaybackImageViewer images={state.currentImages} />
+
+          {/* Joint data display */}
+          {state.currentAction && state.episode && (
+            <div className="mt-2 border-t border-white/20 pt-2">
+              <div className="text-xs font-semibold mb-1 opacity-70">Joint Angles</div>
+              <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 text-xs font-mono">
+                {state.episode.joint_names.map((name, i) => (
+                  <div key={name} className="flex justify-between">
+                    <span className="text-zinc-400 truncate mr-1">{name}</span>
+                    <span>{state.currentAction![i]?.toFixed(1)}°</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </>
+      )}
+    </>
+  );
+
+  // ── Sidebar mode ──
+  if (mode === "sidebar") {
+    return (
+      <div className="p-3 text-sm text-white overflow-y-auto h-full">
+        {panelContent}
+      </div>
+    );
+  }
+
+  // ── Floating mode (original) ──
   return (
     <Rnd
       position={position}
@@ -102,7 +201,6 @@ const EpisodePlayback = ({
         ref={measureRef}
         className={"max-h-[90vh] overflow-y-auto text-sm w-[420px] " + panelStyle}
       >
-        {/* Header */}
         <h3 className="mt-0 mb-3 border-b border-white/50 pb-1 font-bold text-base flex justify-between items-center">
           <span>Episode Playback</span>
           <button
@@ -114,89 +212,7 @@ const EpisodePlayback = ({
             ×
           </button>
         </h3>
-
-        {/* Episode browser */}
-        <EpisodeBrowser
-          episodes={playback.episodeList}
-          loading={playback.listLoading}
-          selectedEpisode={state.episode}
-          onSelect={handleSelectEpisode}
-          onRefresh={playback.fetchEpisodeList}
-        />
-
-        {/* Loading indicator with prefetch progress */}
-        {state.phase === "loading" && (
-          <div className="my-2">
-            <div className="text-xs text-zinc-400 animate-pulse mb-1">
-              Loading episode{state.prefetchProgress > 0 ? " — prefetching images..." : "..."}
-            </div>
-            {state.prefetchProgress > 0 && (
-              <div className="w-full bg-zinc-700 rounded-full h-1.5">
-                <div
-                  className="bg-blue-500 h-1.5 rounded-full transition-all duration-150"
-                  style={{ width: `${Math.round(state.prefetchProgress * 100)}%` }}
-                />
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Error */}
-        {state.error && (
-          <div className="text-xs text-red-400 my-2">{state.error}</div>
-        )}
-
-        {/* Playback controls */}
-        {isLoaded && (
-          <>
-            <PlaybackControls
-              phase={state.phase}
-              frameIndex={state.frameIndex}
-              totalFrames={state.totalFrames}
-              speed={state.speed}
-              fps={state.episode?.fps ?? 30}
-              onPlay={playback.play}
-              onPause={playback.pause}
-              onStop={playback.stop}
-              onSeek={playback.seekTo}
-              onStepForward={playback.stepForward}
-              onStepBackward={playback.stepBackward}
-              onSpeedChange={playback.setPlaybackSpeed}
-              onUnload={playback.unload}
-            />
-
-            {/* Drive robot toggle */}
-            <div className="flex items-center gap-2 mb-2">
-              <label className="text-xs flex items-center gap-1.5 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={driveRobot}
-                  onChange={(e) => setDriveRobot(e.target.checked)}
-                  className="accent-blue-500"
-                />
-                Drive 3D model
-              </label>
-            </div>
-
-            {/* Camera image viewer */}
-            <PlaybackImageViewer images={state.currentImages} />
-
-            {/* Joint data display */}
-            {state.currentAction && state.episode && (
-              <div className="mt-2 border-t border-white/20 pt-2">
-                <div className="text-xs font-semibold mb-1 opacity-70">Joint Angles</div>
-                <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 text-xs font-mono">
-                  {state.episode.joint_names.map((name, i) => (
-                    <div key={name} className="flex justify-between">
-                      <span className="text-zinc-400 truncate mr-1">{name}</span>
-                      <span>{state.currentAction![i]?.toFixed(1)}°</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </>
-        )}
+        {panelContent}
       </div>
     </Rnd>
   );

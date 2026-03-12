@@ -15,6 +15,12 @@ import type { Command, JointName } from "@/lib/bambot";
 
 const POLL_INTERVAL_MS = 250; // Poll every 250ms
 
+// In production Electron the renderer is served via file://, so relative
+// fetch paths would resolve to file:///C:/api/... — use the website's
+// local dev server as the API base instead.
+const BAMBOT_BASE =
+  window.location.protocol === "file:" ? "http://localhost:3000" : "";
+
 type UseBambotAPIOptions = {
   /** Whether API command consumption is enabled */
   enabled: boolean;
@@ -53,7 +59,7 @@ export function useBambotAPI({
           servo_id: j.servoId ?? 0,
         }));
 
-      await fetch("/api/bambot/v1/state", {
+      await fetch(`${BAMBOT_BASE}/api/bambot/v1/state`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -61,8 +67,8 @@ export function useBambotAPI({
           joints,
         }),
       });
-    } catch (error) {
-      console.error("[BamBot API] Failed to sync state:", error);
+    } catch {
+      // Server unreachable — ignore silently (Python server may not be running)
     }
   }, [isConnected]);
 
@@ -110,7 +116,7 @@ export function useBambotAPI({
   const ackCommand = useCallback(
     async (commandId: string, success: boolean, result: string) => {
       try {
-        await fetch("/api/bambot/v1/commands/pending", {
+        await fetch(`${BAMBOT_BASE}/api/bambot/v1/commands/pending`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -119,8 +125,8 @@ export function useBambotAPI({
             result,
           }),
         });
-      } catch (error) {
-        console.error("[BamBot API] Failed to ack command:", error);
+      } catch {
+        // Silently ignore — server may not be running
       }
     },
     []
@@ -132,7 +138,7 @@ export function useBambotAPI({
     isProcessing.current = true;
 
     try {
-      const response = await fetch("/api/bambot/v1/commands/pending");
+      const response = await fetch(`${BAMBOT_BASE}/api/bambot/v1/commands/pending`);
       const data = await response.json();
 
       if (data.success && data.data?.commands?.length > 0) {

@@ -17,7 +17,9 @@ type ChatControlProps = {
   robotName?: string;
   systemPrompt?: string;
   onHide: () => void;
-  show?: boolean; // 新增 show 属性
+  show?: boolean;
+  /** Render inline in sidebar instead of floating Rnd panel */
+  mode?: "floating" | "sidebar";
 };
 
 export function ChatControl({
@@ -25,6 +27,7 @@ export function ChatControl({
   systemPrompt: configSystemPrompt,
   onHide,
   show = true,
+  mode = "floating",
 }: ChatControlProps) {
   const [ref, bounds] = useMeasure();
   const [input, setInput] = useState("");
@@ -153,6 +156,77 @@ export function ChatControl({
     }
   };
 
+  const chatContent = (
+    <>
+      <div className="mb-2 flex-1 overflow-y-auto">
+        {messages.map((msg, idx) => (
+          <div
+            key={idx}
+            className={`mb-2 text-sm ${msg.sender === "AI" ? "text-green-400" : "text-blue-400"}`}
+          >
+            <strong>{msg.sender}:</strong> {msg.text}
+          </div>
+        ))}
+        <div ref={messagesEndRef} />
+      </div>
+      {messages.length > 0 && (
+        <div className="mb-2 flex justify-between items-center">
+          <button
+            onClick={() => setShowSettings(true)}
+            className="text-xs text-zinc-400 hover:text-white transition-colors"
+          >
+            Settings
+          </button>
+          <button
+            onClick={() => setMessages([])}
+            className="text-xs bg-zinc-700 hover:bg-zinc-600 text-white px-2 py-1 rounded"
+          >
+            Clear
+          </button>
+        </div>
+      )}
+      {messages.length === 0 && (
+        <div className="mb-2 flex justify-end">
+          <button
+            onClick={() => setShowSettings(true)}
+            className="text-xs text-zinc-400 hover:text-white transition-colors"
+          >
+            Settings
+          </button>
+        </div>
+      )}
+      <div className="flex items-center space-x-2">
+        <input
+          type="text"
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyPress={handleKeyPress}
+          onKeyDown={(e) => e.stopPropagation()}
+          onKeyUp={(e) => e.stopPropagation()}
+          placeholder="Type a command..."
+          className="flex-1 p-2 rounded bg-zinc-800 border border-zinc-700 text-white outline-none text-sm focus:border-zinc-500 transition-colors"
+        />
+      </div>
+      <SettingsModal
+        show={showSettings}
+        onClose={() => setShowSettings(false)}
+        robotName={robotName}
+        systemPrompt={configSystemPrompt}
+      />
+    </>
+  );
+
+  // ── Sidebar mode ──
+  if (mode === "sidebar") {
+    if (!show) return null;
+    return (
+      <div className="p-3 text-sm text-white flex flex-col h-full">
+        {chatContent}
+      </div>
+    );
+  }
+
+  // ── Floating mode (original) ──
   return (
     <Rnd
       position={position}
@@ -163,7 +237,7 @@ export function ChatControl({
       cancel="input,select,textarea,button,a,option"
     >
       <div ref={ref} className={"p-4 w-80 z-50 " + panelStyle}>
-        <h4 className="border-b border-white/50  pb-2 font-bold mb-2 flex items-center justify-between">
+        <h4 className="border-b border-white/50 pb-2 font-bold mb-2 flex items-center justify-between">
           <span>AI Control Robot</span>
           <div className="flex gap-2">
             <button
@@ -187,9 +261,7 @@ export function ChatControl({
           {messages.map((msg, idx) => (
             <div
               key={idx}
-              className={`mb-2 ${
-                msg.sender === "AI" ? "text-green-400" : "text-blue-400"
-              }`}
+              className={`mb-2 ${msg.sender === "AI" ? "text-green-400" : "text-blue-400"}`}
             >
               <strong>{msg.sender}:</strong> {msg.text}
             </div>
@@ -208,20 +280,6 @@ export function ChatControl({
         )}
         <div className="flex items-center space-x-2">
           <div className="relative flex items-center w-full">
-            <button
-              onClick={() => alert("Camera support coming soon")}
-              className="absolute left-0 bg-zinc-700 hover:bg-zinc-600 text-zinc-400 p-2 rounded"
-            >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                viewBox="0 0 24 24"
-                fill="currentColor"
-                className="w-5 h-5"
-                aria-hidden="true"
-              >
-                <path d="M16 4C16.5523 4 17 4.44772 17 5V9.2L22.2133 5.55071C22.4395 5.39235 22.7513 5.44737 22.9096 5.6736C22.9684 5.75764 23 5.85774 23 5.96033V18.0397C23 18.3158 22.7761 18.5397 22.5 18.5397C22.3974 18.5397 22.2973 18.5081 22.2133 18.4493L17 14.8V19C17 19.5523 16.5523 20 16 20H2C1.44772 20 1 19.5523 1 19V5C1 4.44772 1.44772 4 2 4H16ZM15 6H3V18H15V6ZM7.4 8.82867C7.47607 8.82867 7.55057 8.85036 7.61475 8.8912L11.9697 11.6625C12.1561 11.7811 12.211 12.0284 12.0924 12.2148C12.061 12.2641 12.0191 12.306 11.9697 12.3375L7.61475 15.1088C7.42837 15.2274 7.18114 15.1725 7.06254 14.9861C7.02169 14.9219 7 14.8474 7 14.7713V9.22867C7 9.00776 7.17909 8.82867 7.4 8.82867ZM21 8.84131L17 11.641V12.359L21 15.1587V8.84131Z"></path>{" "}
-              </svg>
-            </button>
             <input
               type="text"
               value={input}
@@ -230,7 +288,7 @@ export function ChatControl({
               onKeyDown={(e) => e.stopPropagation()}
               onKeyUp={(e) => e.stopPropagation()}
               placeholder="Type a command..."
-              className="flex-1 pl-10 p-2 rounded bg-zinc-700 text-white outline-none text-sm"
+              className="flex-1 p-2 rounded bg-zinc-700 text-white outline-none text-sm"
             />
           </div>
         </div>

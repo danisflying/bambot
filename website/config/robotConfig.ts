@@ -76,7 +76,7 @@ export const robotConfigMap: { [key: string]: RobotConfig } = {
       Pitch: 180,
       Elbow: 180,
       Wrist_Pitch: 180,
-      Wrist_Roll: 180,
+      Wrist_Roll: 270,
       Jaw: 180,
     },
     compoundMovements: [

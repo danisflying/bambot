@@ -6,6 +6,22 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 /**
+ * Resolves a renderer public-asset URL so it works in both dev (Vite dev
+ * server, relative paths) and production Electron (file:// protocol, where
+ * absolute paths like "/URDFs/foo.urdf" would resolve to the filesystem root
+ * instead of the app's renderer output directory).
+ */
+export function resolveStaticUrl(path: string): string {
+  if (window.location.protocol === "file:") {
+    // Derive the renderer directory from the current HTML file URL and
+    // resolve the asset path relative to it.
+    const base = new URL("./", window.location.href).href;
+    return new URL(path.replace(/^\//, ""), base).href;
+  }
+  return path;
+}
+
+/**
  * Converts a servo position to an angle.
  * @param position - The servo position (0 to 4096).
  * @returns The corresponding angle (0 to 360 degrees).

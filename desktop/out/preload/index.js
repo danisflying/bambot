@@ -8,6 +8,7 @@ const IPC_CHANNELS = {
   SERIAL_WRITE: "serial:write",
   SERIAL_READ: "serial:read",
   SERIAL_FLUSH_RX: "serial:flush-rx",
+  SERIAL_SET_BAUD_RATE: "serial:set-baud-rate",
   SERIAL_ON_DATA: "serial:on-data",
   SERIAL_ON_ERROR: "serial:on-error",
   // ── Filesystem ────────────────────────────────────────────
@@ -35,6 +36,7 @@ const api = {
     write: (path, data) => electron.ipcRenderer.invoke(IPC_CHANNELS.SERIAL_WRITE, path, data),
     read: (path, length) => electron.ipcRenderer.invoke(IPC_CHANNELS.SERIAL_READ, path, length),
     flushRx: (path) => electron.ipcRenderer.invoke(IPC_CHANNELS.SERIAL_FLUSH_RX, path),
+    setBaudRate: (path, baudRate) => electron.ipcRenderer.invoke(IPC_CHANNELS.SERIAL_SET_BAUD_RATE, path, baudRate),
     onData: (path, callback) => {
       const handler = (_event, payload) => {
         if (payload.path === path) callback(payload.data);
@@ -54,7 +56,7 @@ const api = {
   fs: {
     readEpisodes: () => electron.ipcRenderer.invoke(IPC_CHANNELS.FS_READ_EPISODES),
     readEpisodeDetail: (task, episodeId) => electron.ipcRenderer.invoke(IPC_CHANNELS.FS_READ_EPISODE_DETAIL, task, episodeId),
-    writeEpisode: (meta, data) => electron.ipcRenderer.invoke(IPC_CHANNELS.FS_WRITE_EPISODE, meta, data),
+    writeEpisode: (episode) => electron.ipcRenderer.invoke(IPC_CHANNELS.FS_WRITE_EPISODE, episode),
     deleteEpisode: (robotName, index) => electron.ipcRenderer.invoke(IPC_CHANNELS.FS_DELETE_EPISODE, robotName, index),
     readFile: (filePath) => electron.ipcRenderer.invoke(IPC_CHANNELS.FS_READ_FILE, filePath),
     writeFile: (filePath, data) => electron.ipcRenderer.invoke(IPC_CHANNELS.FS_WRITE_FILE, filePath, data),

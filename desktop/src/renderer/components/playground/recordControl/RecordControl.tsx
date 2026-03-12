@@ -22,6 +22,8 @@ interface RecordControlProps {
   };
   /** Notify parent when recording or replaying is active */
   onBusyChange?: (busy: boolean) => void;
+  /** Render inline in sidebar instead of floating Rnd panel */
+  mode?: "floating" | "sidebar";
 }
 
 type RecordingState = "idle" | "recording" | "paused" | "stopped" | "replaying";
@@ -39,6 +41,7 @@ const RecordControl = ({
   jointDetails = [],
   leaderControl,
   onBusyChange,
+  mode = "floating",
 }: RecordControlProps) => {
   const [recordingState, setRecordingState] = useState<RecordingState>("idle");
   const [recordingTime, setRecordingTime] = useState(0);
@@ -186,6 +189,115 @@ const RecordControl = ({
 
   if (!show) return null;
 
+  const panelContent = (
+    <>
+      <div className="mb-4">
+        <div className="flex items-center justify-between">
+          <span>Duration:</span>
+          <span className="font-mono">{formatTime(recordingTime)}</span>
+        </div>
+        <div className="flex items-center justify-between">
+          <span>Frames:</span>
+          <span className="font-mono">
+            {recordingState === "replaying"
+              ? `${replayProgress}/${recordData.length}`
+              : recordData.length}
+          </span>
+        </div>
+      </div>
+
+      <div className="flex gap-2">
+        <button
+          className={`flex-1 px-2 py-2 rounded text-xs ${
+            recordingState === "idle" || recordingState === "stopped"
+              ? "bg-blue-600 hover:bg-blue-500"
+              : recordingState === "paused"
+              ? "bg-blue-600 hover:bg-blue-500"
+              : "bg-gray-700 cursor-not-allowed"
+          }`}
+          onClick={
+            recordingState === "stopped"
+              ? handleReset
+              : recordingState === "paused"
+              ? () => {
+                  setRecordingState("recording");
+                  startRecording();
+                }
+              : handleStartRecord
+          }
+          disabled={
+            recordingState === "recording" || recordingState === "replaying"
+          }
+        >
+          {recordingState === "paused"
+            ? "Resume"
+            : recordingState === "stopped"
+            ? "New"
+            : "Start"}
+        </button>
+
+        <button
+          className={`flex-1 px-2 py-2 rounded text-xs ${
+            recordingState === "recording"
+              ? "bg-yellow-600 hover:bg-yellow-500"
+              : "bg-gray-700 cursor-not-allowed"
+          }`}
+          onClick={handlePause}
+          disabled={recordingState !== "recording"}
+        >
+          Pause
+        </button>
+
+        <button
+          className={`flex-1 px-2 py-2 rounded text-xs ${
+            recordingState === "recording" || recordingState === "paused"
+              ? "bg-red-600 hover:bg-red-500"
+              : "bg-gray-700 cursor-not-allowed"
+          }`}
+          onClick={handleStop}
+          disabled={
+            recordingState === "idle" ||
+            recordingState === "stopped" ||
+            recordingState === "replaying"
+          }
+        >
+          Stop
+        </button>
+
+        <div className="flex-1 flex items-center gap-2">
+          <button
+            className={`w-full px-2 py-2 rounded text-xs whitespace-nowrap ${
+              recordingState === "stopped"
+                ? "bg-blue-600 hover:bg-blue-500"
+                : recordingState === "replaying"
+                ? "bg-orange-600 hover:bg-orange-500"
+                : "bg-gray-700 cursor-not-allowed"
+            }`}
+            onClick={
+              recordingState === "replaying" ? handleStopReplay : handleReplay
+            }
+            disabled={
+              recordingState !== "stopped" && recordingState !== "replaying"
+            }
+          >
+            {recordingState === "replaying" ? "Stop Replay" : "Replay"}
+          </button>
+          <ReplayHelpDialog />
+        </div>
+      </div>
+    </>
+  );
+
+  // ── Sidebar mode ──
+  if (mode === "sidebar") {
+    return (
+      <div className="p-3 text-sm text-white overflow-y-auto h-full">
+        {panelContent}
+      </div>
+    );
+  }
+
+  // ── Floating mode (original) ──
   return (
     <Rnd
       position={position}
@@ -210,113 +322,7 @@ const RecordControl = ({
             ×
           </button>
         </h3>
-
-        <div className="mb-4">
-          <div className="flex items-center justify-between">
-            <span>Duration:</span>
-            <span className="font-mono">{formatTime(recordingTime)}</span>
-          </div>
-          <div className="flex items-center justify-between">
-            <span>Frames:</span>
-            <span className="font-mono">
-              {recordingState === "replaying"
-                ? `${replayProgress}/${recordData.length}`
-                : recordData.length}
-            </span>
-          </div>
-        </div>
-
-        <div className="flex gap-2">
-          <button
-            className={`flex-1 px-2 py-2 rounded text-xs ${
-              recordingState === "idle" || recordingState === "stopped"
-                ? "bg-blue-600 hover:bg-blue-500"
-                : recordingState === "paused"
-                ? "bg-blue-600 hover:bg-blue-500"
-                : "bg-gray-700 cursor-not-allowed"
-            }`}
-            onClick={
-              recordingState === "stopped"
-                ? handleReset
-                : recordingState === "paused"
-                ? () => {
-                    setRecordingState("recording");
-                    startRecording();
-                  }
-                : handleStartRecord
-            }
-            disabled={
-              recordingState === "recording" || recordingState === "replaying"
-            }
-          >
-            {recordingState === "paused"
-              ? "Resume"
-              : recordingState === "stopped"
-              ? "New"
-              : "Start"}
-          </button>
-
-          <button
-            className={`flex-1 px-2 py-2 rounded text-xs ${
-              recordingState === "recording"
-                ? "bg-yellow-600 hover:bg-yellow-500"
-                : "bg-gray-700 cursor-not-allowed"
-            }`}
-            onClick={handlePause}
-            disabled={recordingState !== "recording"}
-          >
-            Pause
-          </button>
-
-          <button
-            className={`flex-1 px-2 py-2 rounded text-xs ${
-              recordingState === "recording" || recordingState === "paused"
-                ? "bg-red-600 hover:bg-red-500"
-                : "bg-gray-700 cursor-not-allowed"
-            }`}
-            onClick={handleStop}
-            disabled={
-              recordingState === "idle" ||
-              recordingState === "stopped" ||
-              recordingState === "replaying"
-            }
-          >
-            Stop
-          </button>
-
-          <div className="flex-1 flex items-center gap-2">
-            <button
-              className={`w-full px-2 py-2 rounded text-xs whitespace-nowrap ${
-                recordingState === "stopped"
-                  ? "bg-blue-600 hover:bg-blue-500"
-                  : recordingState === "replaying"
-                  ? "bg-orange-600 hover:bg-orange-500"
-                  : "bg-gray-700 cursor-not-allowed"
-              }`}
-              onClick={
-                recordingState === "replaying" ? handleStopReplay : handleReplay
-              }
-              disabled={
-                recordingState !== "stopped" && recordingState !== "replaying"
-              }
-            >
-              {recordingState === "replaying" ? "Stop Replay" : "Replay"}
-            </button>
-            <ReplayHelpDialog />
-          </div>
-
-          {/* <button
-            className={`flex-1 px-2 py-2 rounded text-xs ${
-              recordingState === "stopped"
-                ? "bg-blue-600 hover:bg-blue-500"
-                : "bg-gray-700 cursor-not-allowed"
-            }`}
-            onClick={handleSave}
-            disabled={recordingState !== "stopped"}
-          >
-            Save
-          </button> */}
-        </div>
+        {panelContent}
       </div>
     </Rnd>
   );
